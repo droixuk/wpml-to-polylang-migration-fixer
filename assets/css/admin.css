@@ -1,0 +1,432 @@
+/**
+ * Admin styles for WPML Migration Fixer plugin
+ * Version: 1.0.0
+ */
+
+.wpml-fixer-container {
+    max-width: 1400px;
+    margin: 20px auto;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.wpml-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.wpml-header h1 {
+    margin: 0 0 10px 0;
+    font-size: 32px;
+    font-weight: 600;
+}
+
+.wpml-header p {
+    margin: 0;
+    opacity: 0.9;
+    font-size: 16px;
+}
+
+.wpml-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 25px;
+    margin-bottom: 30px;
+}
+
+.wpml-card {
+    background: white;
+    border-radius: 10px;
+    padding: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.wpml-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.12);
+}
+
+.wpml-card h2 {
+    margin: 0 0 20px 0;
+    font-size: 20px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.wpml-card h2 .icon {
+    font-size: 24px;
+}
+
+.wpml-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: inline-block;
+    text-decoration: none;
+}
+
+.wpml-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    color: white;
+}
+
+.wpml-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.wpml-btn-secondary {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.wpml-btn-secondary:hover {
+    background: #e8e8e8;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    color: #333;
+}
+
+.wpml-btn-warning {
+    background: linear-gradient(135deg, #f39c12 0%, #e74c3c 100%);
+}
+
+.wpml-btn-success {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.wpml-btn-large {
+    padding: 15px 30px;
+    font-size: 16px;
+}
+
+.progress-wrapper {
+    display: none;
+    margin-top: 15px;
+}
+
+.progress-bar {
+    background: #f0f0f1;
+    height: 35px;
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.progress-fill {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    height: 100%;
+    transition: width 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(255, 255, 255, 0.3), 
+        transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+    z-index: 1;
+}
+
+.status-message {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 5px;
+    font-size: 14px;
+    min-height: 20px;
+}
+
+.status-info {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.status-success {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status-error {
+    background: #ffebee;
+    color: #c62828;
+}
+
+.status-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.stats-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 15px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.stats-table th {
+    background: #f5f5f5;
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+}
+
+.stats-table td {
+    padding: 12px;
+    border-top: 1px solid #eee;
+    font-size: 14px;
+}
+
+.stats-table tr:hover {
+    background: #fafafa;
+}
+
+.badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-success {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.badge-error {
+    background: #ffebee;
+    color: #c62828;
+}
+
+.badge-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.badge-info {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.quick-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.stat-box {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 28px;
+    font-weight: bold;
+    color: #333;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 5px;
+}
+
+.fix-section {
+    background: #fafafa;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 15px;
+}
+
+.fix-section h3 {
+    margin: 0 0 15px 0;
+    font-size: 18px;
+    color: #444;
+}
+
+.fix-description {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+#analysis-loading, #diagnosis-loading {
+    text-align: center;
+    padding: 30px;
+    color: #666;
+}
+
+.accordion {
+    margin-bottom: 10px;
+}
+
+.accordion-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s;
+}
+
+.accordion-header:hover {
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.accordion-header h3 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.accordion-arrow {
+    transition: transform 0.3s;
+    font-size: 20px;
+}
+
+.accordion.active .accordion-arrow {
+    transform: rotate(180deg);
+}
+
+.accordion-content {
+    display: none;
+    padding: 20px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 0 0 8px 8px;
+    margin-top: -5px;
+}
+
+.accordion.active .accordion-content {
+    display: block;
+}
+
+.language-comparison-table {
+    width: 100%;
+    margin-top: 20px;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.language-comparison-table th {
+    background: #4a5568;
+    color: white;
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.language-comparison-table td {
+    padding: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.language-comparison-table tr:hover {
+    background: #f7fafc;
+}
+
+.mismatch {
+    color: #e74c3c;
+    font-weight: bold;
+}
+
+.match {
+    color: #27ae60;
+    font-weight: bold;
+}
+
+.spinner {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.diagnosis-table {
+    width: 100%;
+    margin-top: 15px;
+    font-size: 13px;
+}
+
+.diagnosis-table th {
+    background: #f0f0f0;
+    padding: 8px;
+    text-align: left;
+}
+
+.diagnosis-table td {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.debug-info {
+    background: #f5f5f5;
+    border-radius: 5px;
+    padding: 10px;
+    margin-top: 10px;
+    font-size: 12px;
+    font-family: monospace;
+}
