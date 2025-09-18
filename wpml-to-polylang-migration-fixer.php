@@ -3,7 +3,7 @@
  * Plugin Name: WPML to Polylang Migration Fixer
  * Plugin URI: https://your-website.com/wpml-to-polylang-migration-fixer
  * Description: Comprehensive tool to fix language assignments and translation groups after migrating from WPML to Polylang
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Your Name
  * Author URI: https://your-website.com
  * License: GPL v2 or later
@@ -25,11 +25,11 @@ if (defined('WPML_TO_POLYLANG_FIXER_VERSION')) {
 }
 
 // Define plugin constants
-define('WPML_TO_POLYLANG_FIXER_VERSION', '1.0.1');
+define('WPML_TO_POLYLANG_FIXER_VERSION', '1.0.2');
 define('WPML_TO_POLYLANG_FIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WPML_TO_POLYLANG_FIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WPML_TO_POLYLANG_FIXER_PLUGIN_FILE', __FILE__);
-define('WPML_TO_POLYLANG_FIXER_DEBUG', false);
+define('WPML_TO_POLYLANG_FIXER_DEBUG', defined('WP_DEBUG') && WP_DEBUG);
 
 // Use consistent naming convention
 define('WPML_FIXER_VERSION', WPML_TO_POLYLANG_FIXER_VERSION);
@@ -46,6 +46,8 @@ class WPML_To_Polylang_Migration_Fixer {
     private $ajax_handler = null;
     private $language_converter = null;
     private $debug_logger = null;
+    private $db_helper = null;
+    private $initialized = false;
     
     public static function get_instance() {
         if (null === self::$instance) {
@@ -55,40 +57,44 @@ class WPML_To_Polylang_Migration_Fixer {
     }
     
     private function __construct() {
-        // Delay loading until plugins_loaded to ensure WordPress is fully initialized
+        // Initialize immediately but delay component loading
         add_action('plugins_loaded', [$this, 'init'], 1);
+        add_action('init', [$this, 'init_components'], 5);
+        
+        // Load dependencies early
+        $this->load_dependencies();
     }
     
     public function init() {
-        // Check if already initialized
-        if ($this->debug_logger !== null) {
+        if ($this->initialized) {
             return;
         }
         
-        $this->load_dependencies();
         $this->init_hooks();
+        $this->initialized = true;
     }
     
     private function load_dependencies() {
-        // Only load files if they haven't been loaded yet
-        $files = [
+        // Load core files first
+        $core_files = [
             'includes/class-debug-logger.php',
-            'includes/class-language-converter.php',
-            'includes/class-database-helper.php'
+            'includes/class-database-helper.php', 
+            'includes/class-language-converter.php'
         ];
         
-        foreach ($files as $file) {
+        foreach ($core_files as $file) {
             $path = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . $file;
             if (file_exists($path)) {
                 require_once $path;
             }
         }
         
+        // Load admin files only if needed
         if (is_admin()) {
             $admin_files = [
+                'admin/class-ui-renderer.php',
                 'admin/class-admin-handler.php',
-                'admin/class-ajax-handler.php',
-                'admin/class-ui-renderer.php'
+                'admin/class-ajax-handler.php'
             ];
             
             foreach ($admin_files as $file) {
@@ -104,37 +110,71 @@ class WPML_To_Polylang_Migration_Fixer {
         register_activation_hook(WPML_TO_POLYLANG_FIXER_PLUGIN_FILE, [$this, 'activate']);
         register_deactivation_hook(WPML_TO_POLYLANG_FIXER_PLUGIN_FILE, [$this, 'deactivate']);
         add_action('init', [$this, 'load_textdomain']);
-        add_action('init', [$this, 'init_components'], 5);
     }
     
     public function init_components() {
-        if (!function_exists('pll_languages_list')) {
-            add_action('admin_notices', [$this, 'polylang_missing_notice']);
+        // Don't initialize twice
+        if ($this->debug_logger !== null) {
             return;
         }
         
-        // Check class existence before instantiating
+        // Initialize debug logger first
         if (class_exists('WPML_To_Polylang_Fixer_Debug_Logger')) {
             $this->debug_logger = new WPML_To_Polylang_Fixer_Debug_Logger();
+            $this->debug_logger->log('Plugin components initialization started', 'info');
         }
         
+        // Initialize database helper
+        if (class_exists('WPML_To_Polylang_Fixer_Database_Helper')) {
+            $this->db_helper = new WPML_To_Polylang_Fixer_Database_Helper();
+            if ($this->debug_logger) {
+                $this->debug_logger->log('Database helper initialized', 'info');
+            }
+        }
+        
+        // Initialize language converter
         if (class_exists('WPML_To_Polylang_Fixer_Language_Converter')) {
             $this->language_converter = new WPML_To_Polylang_Fixer_Language_Converter();
+            if ($this->debug_logger) {
+                $this->debug_logger->log('Language converter initialized', 'info');
+            }
         }
         
+        // Check Polylang availability
+        if (!function_exists('pll_languages_list')) {
+            add_action('admin_notices', [$this, 'polylang_missing_notice']);
+            if ($this->debug_logger) {
+                $this->debug_logger->log('Polylang not available', 'warning');
+            }
+            return;
+        }
+        
+        // Initialize admin components only if in admin
         if (is_admin()) {
-            // Use consistent class names
             if (class_exists('WPML_Fixer_Admin_Handler')) {
                 $this->admin_handler = new WPML_Fixer_Admin_Handler();
+                if ($this->debug_logger) {
+                    $this->debug_logger->log('Admin handler initialized', 'info');
+                }
             }
             
             if (class_exists('WPML_Fixer_Ajax_Handler')) {
                 $this->ajax_handler = new WPML_Fixer_Ajax_Handler();
+                if ($this->debug_logger) {
+                    $this->debug_logger->log('AJAX handler initialized', 'info');
+                }
             }
         }
         
         if ($this->debug_logger) {
-            $this->debug_logger->log('Plugin initialized', 'info');
+            $components = [
+                'debug_logger' => $this->debug_logger ? 'OK' : 'FAIL',
+                'db_helper' => $this->db_helper ? 'OK' : 'FAIL',
+                'language_converter' => $this->language_converter ? 'OK' : 'FAIL',
+                'admin_handler' => $this->admin_handler ? 'OK' : 'N/A',
+                'ajax_handler' => $this->ajax_handler ? 'OK' : 'N/A'
+            ];
+            $this->debug_logger->log('Component initialization completed: ' . json_encode($components), 'info');
         }
     }
     
@@ -147,6 +187,7 @@ class WPML_To_Polylang_Migration_Fixer {
     }
     
     public function activate() {
+        // Create log directory
         $upload_dir = wp_upload_dir();
         $log_dir = $upload_dir['basedir'] . '/wpml-to-polylang-fixer-logs';
         
@@ -158,15 +199,29 @@ class WPML_To_Polylang_Migration_Fixer {
             }
         }
         
+        // Set default options
         add_option('wpml_to_polylang_fixer_debug_enabled', false);
         add_option('wpml_to_polylang_fixer_batch_size', 20);
         add_option('wpml_to_polylang_fixer_version', WPML_TO_POLYLANG_FIXER_VERSION);
+        
+        // Log activation
+        if (class_exists('WPML_To_Polylang_Fixer_Debug_Logger')) {
+            $logger = new WPML_To_Polylang_Fixer_Debug_Logger();
+            $logger->log('Plugin activated - Version: ' . WPML_TO_POLYLANG_FIXER_VERSION, 'info');
+        }
     }
     
     public function deactivate() {
         global $wpdb;
+        
+        // Clean up transients
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_wpml_to_polylang_fixer_%'");
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_wpml_to_polylang_fixer_%'");
+        
+        // Log deactivation
+        if ($this->debug_logger) {
+            $this->debug_logger->log('Plugin deactivated', 'info');
+        }
     }
     
     public function polylang_missing_notice() {
@@ -180,12 +235,17 @@ class WPML_To_Polylang_Migration_Fixer {
         <?php
     }
     
+    /**
+     * Get plugin component by name
+     */
     public function get_component($component) {
         switch ($component) {
             case 'debug_logger':
                 return $this->debug_logger;
             case 'language_converter':
                 return $this->language_converter;
+            case 'db_helper':
+                return $this->db_helper;
             case 'admin_handler':
                 return $this->admin_handler;
             case 'ajax_handler':
@@ -193,6 +253,33 @@ class WPML_To_Polylang_Migration_Fixer {
             default:
                 return null;
         }
+    }
+    
+    /**
+     * Check if components are properly initialized
+     */
+    public function is_ready() {
+        return $this->debug_logger !== null && 
+               $this->db_helper !== null && 
+               $this->language_converter !== null;
+    }
+    
+    /**
+     * Get initialization status
+     */
+    public function get_status() {
+        return [
+            'initialized' => $this->initialized,
+            'ready' => $this->is_ready(),
+            'polylang_active' => function_exists('pll_languages_list'),
+            'components' => [
+                'debug_logger' => $this->debug_logger !== null,
+                'db_helper' => $this->db_helper !== null,
+                'language_converter' => $this->language_converter !== null,
+                'admin_handler' => $this->admin_handler !== null,
+                'ajax_handler' => $this->ajax_handler !== null
+            ]
+        ];
     }
 }
 

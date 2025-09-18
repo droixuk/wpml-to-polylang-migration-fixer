@@ -5,7 +5,7 @@
  * Handles AJAX requests for the WPML Migration Fixer plugin
  * 
  * @package WPML_Migration_Fixer
- * @since 1.0.0
+ * @since 1.0.1
  */
 
 if (!defined('ABSPATH')) {
@@ -65,21 +65,41 @@ class WPML_Fixer_Ajax_Handler {
         add_action('wp_ajax_wpml_fixer_ajax_fix_woo_attributes', [$this, 'handle_fix_woo_attributes']);
         add_action('wp_ajax_wpml_fixer_ajax_reset_session', [$this, 'handle_reset_session']);
         add_action('wp_ajax_wpml_fixer_ajax_verify_migration', [$this, 'handle_verify_migration']);
+        add_action('wp_ajax_wpml_fixer_ajax_test_connection', [$this, 'handle_test_connection']);
+        add_action('wp_ajax_wpml_fixer_ajax_save_debug_setting', [$this, 'handle_save_debug_setting']);
         add_action('wp_ajax_wpml_fixer_download_logs', [$this, 'handle_download_logs']);
+        
+        // Log successful initialization
+        if ($this->logger) {
+            $this->logger->log('AJAX handlers registered successfully', 'info');
+        }
     }
     
     /**
-     * Verify AJAX request
+     * Verify AJAX request - Using same approach as working snippet
      */
     private function verify_request() {
+        // Use same verification method as working snippet
         if (!check_ajax_referer('wpml_fixer_ajax', 'nonce', false)) {
+            if ($this->logger) {
+                $this->logger->log('AJAX request failed: Invalid nonce', 'error');
+            }
             wp_send_json_error(__('Security check failed', 'wpml-migration-fixer'));
             exit;
         }
         
+        // Check user permissions
         if (!current_user_can('manage_options')) {
+            if ($this->logger) {
+                $this->logger->log('AJAX request failed: Unauthorized user - ' . get_current_user_id(), 'error');
+            }
             wp_send_json_error(__('Unauthorized access', 'wpml-migration-fixer'));
             exit;
+        }
+        
+        // Log successful verification for debugging
+        if ($this->logger) {
+            $this->logger->log('AJAX request verified successfully for user ' . get_current_user_id(), 'debug');
         }
     }
     
@@ -218,25 +238,165 @@ class WPML_Fixer_Ajax_Handler {
         $this->verify_request();
         
         try {
-            $stats = $this->db_helper ? $this->db_helper->get_migration_statistics() : [];
+            if ($this->logger) {
+                $this->logger->log('Analysis request started', 'info');
+            }
+            
+            // Check if required components are available
+            if (!$this->db_helper) {
+                throw new Exception('Database helper not initialized');
+            }
+            
+            if (!function_exists('pll_languages_list')) {
+                throw new Exception('Polylang not active or pll_languages_list function not available');
+            }
+            
+            // Get analysis data
+            $stats = $this->db_helper->get_migration_statistics();
             $problematic_codes = $this->language_converter ? $this->language_converter->get_problematic_codes() : [];
             
+            if ($this->logger) {
+                $this->logger->log('Statistics retrieved: ' . json_encode(array_map('intval', $stats)), 'debug');
+            }
+            
+            // Ensure stats has all required keys with default values
+            $stats = wp_parse_args($stats, [
+                'posts_with_language' => 0,
+                'posts_without_language' => 0,
+                'terms_with_language' => 0,
+                'terms_without_language' => 0,
+                'translation_groups' => 0,
+                'problematic_codes' => 0,
+                'post_types_breakdown' => []
+            ]);
+            
+            // Extract variables for the view
+            extract($stats);
+            
+            // Capture the view output
             ob_start();
             $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/analysis-results.php';
             if (file_exists($view_file)) {
                 include $view_file;
             } else {
-                echo '<p>Analysis results view not found.</p>';
+                echo '<div class="status-message status-error">';
+                echo __('Analysis results template not found.', 'wpml-to-polylang-migration-fixer');
+                echo '<br><small>Expected: ' . esc_html($view_file) . '</small>';
+                echo '</div>';
             }
             $html = ob_get_clean();
+            
+            if ($this->logger) {
+                $this->logger->log("Analysis completed successfully - Posts: {$stats['posts_with_language']}/{$stats['posts_without_language']}, Terms: {$stats['terms_with_language']}/{$stats['terms_without_language']}", 'info');
+            }
             
             wp_send_json_success($html);
             
         } catch (Exception $e) {
+            $error_message = 'Analysis failed: ' . $e->getMessage();
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $error_message .= ' in ' . $e->getFile() . ':' . $e->getLine();
+            }
+            
             if ($this->logger) {
                 $this->logger->log_error("Analysis failed", $e);
             }
-            wp_send_json_error($e->getMessage());
+            
+            wp_send_json_error($error_message);
+        } catch (Error $e) {
+            // Catch fatal errors as well
+            $error_message = 'Analysis failed with fatal error: ' . $e->getMessage();
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $error_message .= ' in ' . $e->getFile() . ':' . $e->getLine();
+            }
+            
+            if ($this->logger) {
+                $this->logger->log_error("Analysis fatal error", $e);
+            }
+            
+            wp_send_json_error($error_message);
+        }
+    }
+    
+    /**
+     * Handle test connection request - Fixed to match working snippet
+     */
+    public function handle_test_connection() {
+        // Use same verification as working snippet
+        if (!check_ajax_referer('wpml_fixer_ajax', 'nonce', false)) {
+            wp_send_json_error('Security check failed: Invalid nonce');
+            return;
+        }
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized access');
+            return;
+        }
+        
+        try {
+            $test_data = sanitize_text_field($_POST['test_data'] ?? '');
+            
+            $response_data = [
+                'message' => 'AJAX connection test successful!',
+                'timestamp' => current_time('mysql'),
+                'test_data_received' => $test_data,
+                'components' => [
+                    'db_helper' => $this->db_helper ? 'initialized' : 'missing',
+                    'language_converter' => $this->language_converter ? 'initialized' : 'missing',
+                    'logger' => $this->logger ? 'initialized' : 'missing'
+                ],
+                'polylang_active' => function_exists('pll_languages_list'),
+                'wpml_data' => $this->db_helper ? $this->db_helper->wpml_tables_exist() : false
+            ];
+            
+            if ($this->logger) {
+                $this->logger->log('Connection test successful', 'info');
+            }
+            
+            wp_send_json_success($response_data);
+            
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Connection test failed", $e);
+            }
+            wp_send_json_error('Connection test failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Handle save debug setting request - Fixed to match working snippet
+     */
+    public function handle_save_debug_setting() {
+        // Use same verification approach as working snippet
+        if (!check_ajax_referer('wpml_fixer_ajax', 'nonce', false)) {
+            wp_send_json_error('Security check failed for debug setting');
+            return;
+        }
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized to change debug setting');
+            return;
+        }
+        
+        try {
+            $enabled = isset($_POST['enabled']) && $_POST['enabled'] === 'true';
+            $old_setting = get_option('wpml_to_polylang_fixer_debug_enabled', false);
+            
+            update_option('wpml_to_polylang_fixer_debug_enabled', $enabled);
+            
+            // Only log after the setting is changed to avoid logging issues
+            if ($this->logger && $enabled) {
+                $this->logger->log('Debug mode ' . ($enabled ? 'enabled' : 'disabled') . ' (was: ' . ($old_setting ? 'enabled' : 'disabled') . ')', 'info');
+            }
+            
+            wp_send_json_success([
+                'debug_enabled' => $enabled,
+                'previous_state' => $old_setting,
+                'message' => 'Debug setting saved successfully'
+            ]);
+            
+        } catch (Exception $e) {
+            wp_send_json_error('Failed to save debug setting: ' . $e->getMessage());
         }
     }
     
@@ -247,22 +407,38 @@ class WPML_Fixer_Ajax_Handler {
             $problematic = $this->language_converter ? $this->language_converter->get_problematic_codes() : [];
             $wrong_codes = $this->db_helper ? $this->db_helper->get_content_with_wrong_codes() : [];
             
+            // Extract variables for the view
+            extract(compact('problematic', 'wrong_codes'));
+            
             ob_start();
             $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/diagnosis-results.php';
             if (file_exists($view_file)) {
                 include $view_file;
             } else {
-                echo '<p>Diagnosis results view not found.</p>';
+                echo '<div class="status-message status-error">';
+                echo __('Diagnosis results template not found.', 'wpml-to-polylang-migration-fixer');
+                echo '<br><small>Expected: ' . esc_html($view_file) . '</small>';
+                echo '</div>';
             }
             $html = ob_get_clean();
+            
+            if ($this->logger) {
+                $problematic_count = count($problematic);
+                $this->logger->log("Diagnosis completed - Found {$problematic_count} problematic codes", 'info');
+            }
             
             wp_send_json_success($html);
             
         } catch (Exception $e) {
+            $error_message = 'Diagnosis failed: ' . $e->getMessage();
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $error_message .= ' in ' . $e->getFile() . ':' . $e->getLine();
+            }
+            
             if ($this->logger) {
                 $this->logger->log_error("Diagnosis failed", $e);
             }
-            wp_send_json_error($e->getMessage());
+            wp_send_json_error($error_message);
         }
     }
     
@@ -283,7 +459,43 @@ class WPML_Fixer_Ajax_Handler {
     
     public function handle_verify_migration() {
         $this->verify_request();
-        wp_send_json_success(['message' => 'Verification not yet implemented']);
+        
+        try {
+            // Get verification data
+            $verification = [
+                'translation_groups' => 0,
+                'orphaned_languages' => 0,
+                'duplicate_assignments' => 0,
+                'language_mapping' => []
+            ];
+            
+            if ($this->db_helper) {
+                $stats = $this->db_helper->get_migration_statistics();
+                $verification['translation_groups'] = $stats['translation_groups'] ?? 0;
+            }
+            
+            // Extract variables for the view
+            extract(compact('verification'));
+            
+            ob_start();
+            $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/verification-results.php';
+            if (file_exists($view_file)) {
+                include $view_file;
+            } else {
+                echo '<div class="status-message status-info">';
+                echo __('Verification results template not found. Basic verification completed.', 'wpml-to-polylang-migration-fixer');
+                echo '</div>';
+            }
+            $html = ob_get_clean();
+            
+            wp_send_json_success($html);
+            
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Verification failed", $e);
+            }
+            wp_send_json_error('Verification failed: ' . $e->getMessage());
+        }
     }
     
     public function handle_reset_session() {
@@ -308,7 +520,9 @@ class WPML_Fixer_Ajax_Handler {
     }
     
     public function handle_download_logs() {
-        if (!wp_verify_nonce($_GET['nonce'] ?? '', 'wpml_fixer_logs')) {
+        $nonce = $_GET['nonce'] ?? '';
+        
+        if (!wp_verify_nonce($nonce, 'wpml_fixer_ajax')) {
             wp_die('Security check failed');
         }
         

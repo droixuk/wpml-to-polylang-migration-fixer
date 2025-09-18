@@ -1,12 +1,160 @@
 /**
  * Admin JavaScript for WPML Migration Fixer plugin
- * Version: 1.0.0
+ * Version: 1.0.1 - Enhanced with better debugging
  */
 
 jQuery(document).ready(function($) {
     window.wpmlFixerAjax = {
         sessionFixed: {},
         wooAttributesFixed: 0,
+        debugEnabled: false,
+        
+        /**
+         * Initialize the interface
+         */
+        init: function() {
+            var self = this;
+            
+            // Debug nonce information
+            self.debugLog('Initializing WPML Fixer...');
+            self.debugLog('AJAX URL: ' + self.ajaxUrl);
+            self.debugLog('Nonce: ' + (self.nonce ? self.nonce.substring(0, 10) + '...' : 'NOT SET'));
+            self.debugLog('Nonce Name: ' + (self.nonceName || 'NOT SET'));
+            
+            // Check initial debug state
+            self.debugEnabled = $('#debug-toggle').is(':checked');
+            self.toggleDebugConsole();
+            
+            // Bind debug toggle
+            $('#debug-toggle').on('change', function() {
+                self.debugEnabled = $(this).is(':checked');
+                self.toggleDebugConsole();
+                self.debugLog('Debug mode ' + (self.debugEnabled ? 'enabled' : 'disabled'));
+                
+                // Save debug preference
+                $.post(self.ajaxUrl, {
+                    action: 'wpml_fixer_ajax_save_debug_setting',
+                    nonce: self.nonce,
+                    enabled: self.debugEnabled
+                });
+            });
+            
+            self.debugLog('WPML Migration Fixer initialized');
+        },
+        
+        /**
+         * Toggle debug console visibility
+         */
+        toggleDebugConsole: function() {
+            if (this.debugEnabled) {
+                $('#debug-console').show();
+            } else {
+                $('#debug-console').hide();
+            }
+        },
+        
+        /**
+         * Add debug log entry
+         */
+        debugLog: function(message, type) {
+            if (!this.debugEnabled) return;
+            
+            type = type || 'info';
+            var timestamp = new Date().toLocaleTimeString();
+            var color = type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#4caf50';
+            var prefix = type === 'error' ? '❌' : type === 'warning' ? '⚠️' : '📝';
+            
+            var logEntry = '<div style="color: ' + color + '; margin: 2px 0;">' +
+                          '[' + timestamp + '] ' + prefix + ' ' + message + '</div>';
+            
+            $('#debug-output').append(logEntry);
+            $('#debug-output').scrollTop($('#debug-output')[0].scrollHeight);
+        },
+        
+        /**
+         * Clear debug log
+         */
+        clearDebug: function() {
+            $('#debug-output').html('<div>Debug console cleared...</div>');
+        },
+        
+        /**
+         * Test AJAX connection
+         */
+        testConnection: function() {
+            var self = this;
+            $("#btn-test-connection").prop("disabled", true);
+            self.debugLog('Testing AJAX connection...');
+            self.debugLog('Using nonce: ' + (self.nonce ? self.nonce.substring(0, 10) + '...' : 'NONE'));
+            self.debugLog('AJAX URL: ' + self.ajaxUrl);
+            
+            var requestData = {
+                action: "wpml_fixer_ajax_test_connection",
+                nonce: self.nonce,
+                test_data: "Connection test from frontend - " + new Date().toISOString()
+            };
+            
+            self.debugLog('Request data: ' + JSON.stringify(requestData, null, 2));
+            
+            $.post(self.ajaxUrl, requestData, function(response) {
+                self.debugLog('Response received: ' + JSON.stringify(response, null, 2).substring(0, 200) + '...');
+                
+                if (response && response.success) {
+                    self.debugLog('✅ Connection test successful: ' + JSON.stringify(response.data), 'info');
+                    $("#verify-results").html(
+                        '<div class="status-message status-success">✅ AJAX connection working properly!</div>' +
+                        '<div style="margin-top: 10px; font-size: 12px;">' +
+                        '<strong>Server Response:</strong><br>' +
+                        'Message: ' + (response.data.message || 'N/A') + '<br>' +
+                        'Timestamp: ' + (response.data.timestamp || 'N/A') + '<br>' +
+                        'Components: ' + JSON.stringify(response.data.components || {}) +
+                        '</div>'
+                    );
+                } else {
+                    var errorMsg = response && response.data ? response.data : 'Unknown response format';
+                    var troubleshoot = '';
+                    
+                    // Add specific troubleshooting based on error type
+                    if (typeof errorMsg === 'object' && errorMsg.error) {
+                        if (errorMsg.error.includes('nonce') || errorMsg.error.includes('Security')) {
+                            troubleshoot = '<div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 5px;">' +
+                                         '<strong>🔧 Troubleshooting:</strong><br>' +
+                                         '• Try refreshing the page to get a new security token<br>' +
+                                         '• Check if you are logged in as an administrator<br>' +
+                                         '• Clear browser cache and cookies<br>' +
+                                         'Nonce Debug: Valid=' + (errorMsg.nonce_debug ? errorMsg.nonce_debug.valid : 'Unknown') +
+                                         '</div>';
+                        }
+                        errorMsg = errorMsg.error;
+                    }
+                    
+                    self.debugLog('❌ Connection test failed: ' + errorMsg, 'error');
+                    $("#verify-results").html(
+                        '<div class="status-message status-error">' +
+                        '❌ Connection test failed: ' + errorMsg + '<br>' +
+                        '<small>Check the debug console for more details</small>' +
+                        '</div>' + troubleshoot
+                    );
+                }
+                $("#btn-test-connection").prop("disabled", false);
+            }).fail(function(xhr, status, error) {
+                var errorDetails = 'Status: ' + status + ', Error: ' + error;
+                if (xhr.responseText) {
+                    errorDetails += ', Response: ' + xhr.responseText.substring(0, 200);
+                    self.debugLog('Server response text: ' + xhr.responseText, 'error');
+                }
+                self.debugLog('❌ Connection failed completely: ' + errorDetails, 'error');
+                $("#verify-results").html(
+                    '<div class="status-message status-error">' +
+                    '❌ AJAX connection failed completely!<br>' +
+                    '<small>Status: ' + status + ', Error: ' + error + '</small><br>' +
+                    '<small>Response Code: ' + (xhr.status || 'Unknown') + '</small><br>' +
+                    '<small>Check browser console and server error logs</small>' +
+                    '</div>'
+                );
+                $("#btn-test-connection").prop("disabled", false);
+            });
+        },
         
         /**
          * Toggle accordion
@@ -25,13 +173,19 @@ jQuery(document).ready(function($) {
             }
             
             self.sessionFixed = {};
+            self.debugLog('Resetting session...');
+            
             $.post(self.ajaxUrl, {
                 action: "wpml_fixer_ajax_reset_session",
                 nonce: self.nonce
             }, function(response) {
-                if (response.success) {
-                    console.log('Session reset successfully');
+                if (response && response.success) {
+                    self.debugLog('✅ Session reset successfully');
+                } else {
+                    self.debugLog('❌ Session reset failed: ' + (response.data || 'Unknown error'), 'error');
                 }
+            }).fail(function(xhr, status, error) {
+                self.debugLog('❌ Session reset failed: ' + error, 'error');
             });
         },
         
@@ -42,67 +196,123 @@ jQuery(document).ready(function($) {
             var self = this;
             $("#verify-results").html('<div id="analysis-loading"><div class="spinner"></div><p>Verifying migration integrity...</p></div>');
             $("#btn-verify").prop("disabled", true);
+            self.debugLog('Starting migration verification...');
             
             $.post(self.ajaxUrl, {
                 action: "wpml_fixer_ajax_verify_migration",
                 nonce: self.nonce
             }, function(response) {
-                if (response.success) {
+                if (response && response.success) {
                     $("#verify-results").html(response.data);
+                    self.debugLog('✅ Verification completed successfully');
                 } else {
-                    $("#verify-results").html('<div class="status-message status-error">Verification failed: ' + (response.data || "Unknown error") + '</div>');
+                    var errorMsg = response && response.data ? response.data : 'Unknown error';
+                    $("#verify-results").html('<div class="status-message status-error">Verification failed: ' + errorMsg + '</div>');
+                    self.debugLog('❌ Verification failed: ' + errorMsg, 'error');
                 }
                 $("#btn-verify").prop("disabled", false);
-            }).fail(function() {
-                $("#verify-results").html('<div class="status-message status-error">Connection error. Please try again.</div>');
+            }).fail(function(xhr, status, error) {
+                var errorMsg = 'Connection error: ' + error;
+                $("#verify-results").html('<div class="status-message status-error">' + errorMsg + '</div>');
+                self.debugLog('❌ Verification failed: ' + errorMsg, 'error');
                 $("#btn-verify").prop("disabled", false);
             });
         },
         
         /**
-         * Run analysis
+         * Run analysis with enhanced error reporting
          */
         runAnalysis: function() {
             var self = this;
             $("#analysis-results").html('<div id="analysis-loading"><div class="spinner"></div><p>Analyzing your content...</p></div>');
             $("#btn-analyze").prop("disabled", true);
+            self.debugLog('Starting content analysis...');
             
             $.post(self.ajaxUrl, {
                 action: "wpml_fixer_ajax_analyze",
-                nonce: self.nonce
+                nonce: self.nonce,
+                debug: self.debugEnabled
             }, function(response) {
-                if (response.success) {
+                self.debugLog('Analysis response received: ' + JSON.stringify(response).substring(0, 100) + '...');
+                
+                if (response && response.success) {
                     $("#analysis-results").html(response.data);
+                    self.debugLog('✅ Analysis completed successfully');
                 } else {
-                    $("#analysis-results").html('<div class="status-message status-error">Analysis failed: ' + (response.data || "Unknown error") + '</div>');
+                    var errorMsg = response && response.data ? response.data : 'Unknown error - no response.data';
+                    var errorHtml = '<div class="status-message status-error">' +
+                                   '<strong>Analysis failed:</strong> ' + errorMsg + 
+                                   '</div>';
+                    
+                    if (self.debugEnabled) {
+                        errorHtml += '<div class="debug-info" style="margin-top: 10px; font-size: 11px; background: #f5f5f5; padding: 10px; border-radius: 5px;">' +
+                                    '<strong>Debug Info:</strong><br>' +
+                                    'Response: ' + JSON.stringify(response, null, 2) +
+                                    '</div>';
+                    }
+                    
+                    $("#analysis-results").html(errorHtml);
+                    self.debugLog('❌ Analysis failed: ' + errorMsg, 'error');
                 }
                 $("#btn-analyze").prop("disabled", false);
-            }).fail(function() {
-                $("#analysis-results").html('<div class="status-message status-error">Connection error. Please try again.</div>');
+            }).fail(function(xhr, status, error) {
+                var errorMsg = 'AJAX Error - Status: ' + status + ', Error: ' + error;
+                var errorHtml = '<div class="status-message status-error">' +
+                               '<strong>Analysis failed with connection error:</strong><br>' +
+                               'Status: ' + status + '<br>' +
+                               'Error: ' + error +
+                               '</div>';
+                
+                if (self.debugEnabled && xhr.responseText) {
+                    errorHtml += '<div class="debug-info" style="margin-top: 10px; font-size: 11px; background: #f5f5f5; padding: 10px; border-radius: 5px; max-height: 200px; overflow: auto;">' +
+                                '<strong>Server Response:</strong><br>' +
+                                '<pre>' + xhr.responseText.substring(0, 1000) + (xhr.responseText.length > 1000 ? '...' : '') + '</pre>' +
+                                '</div>';
+                }
+                
+                $("#analysis-results").html(errorHtml);
+                self.debugLog('❌ Analysis failed: ' + errorMsg, 'error');
                 $("#btn-analyze").prop("disabled", false);
             });
         },
         
         /**
-         * Run diagnosis
+         * Run diagnosis with enhanced error reporting
          */
         runDiagnosis: function() {
             var self = this;
             $("#diagnosis-results").html('<div id="diagnosis-loading"><div class="spinner"></div><p>Running language diagnosis...</p></div>');
             $("#btn-diagnose").prop("disabled", true);
+            self.debugLog('Starting language diagnosis...');
             
             $.post(self.ajaxUrl, {
                 action: "wpml_fixer_ajax_diagnose",
-                nonce: self.nonce
+                nonce: self.nonce,
+                debug: self.debugEnabled
             }, function(response) {
-                if (response.success) {
+                self.debugLog('Diagnosis response received');
+                
+                if (response && response.success) {
                     $("#diagnosis-results").html(response.data);
+                    self.debugLog('✅ Diagnosis completed successfully');
                 } else {
-                    $("#diagnosis-results").html('<div class="status-message status-error">Diagnosis failed: ' + (response.data || "Unknown error") + '</div>');
+                    var errorMsg = response && response.data ? response.data : 'Unknown error';
+                    var errorHtml = '<div class="status-message status-error">Diagnosis failed: ' + errorMsg + '</div>';
+                    
+                    if (self.debugEnabled) {
+                        errorHtml += '<div class="debug-info" style="margin-top: 10px; font-size: 11px; background: #f5f5f5; padding: 10px; border-radius: 5px;">' +
+                                    'Response: ' + JSON.stringify(response, null, 2) +
+                                    '</div>';
+                    }
+                    
+                    $("#diagnosis-results").html(errorHtml);
+                    self.debugLog('❌ Diagnosis failed: ' + errorMsg, 'error');
                 }
                 $("#btn-diagnose").prop("disabled", false);
-            }).fail(function() {
-                $("#diagnosis-results").html('<div class="status-message status-error">Connection error. Please try again.</div>');
+            }).fail(function(xhr, status, error) {
+                var errorMsg = 'Connection error: ' + error;
+                $("#diagnosis-results").html('<div class="status-message status-error">' + errorMsg + '</div>');
+                self.debugLog('❌ Diagnosis failed: ' + errorMsg, 'error');
                 $("#btn-diagnose").prop("disabled", false);
             });
         },
@@ -119,6 +329,7 @@ jQuery(document).ready(function($) {
             $("#progress-english-fix").show();
             $("#english-fix-status").html('<div class="status-message status-info">Starting English variants fix...</div>');
             $("#btn-fix-english").prop("disabled", true);
+            self.debugLog('Starting English variants fix...');
             
             self.processEnglishBatch(0);
         },
@@ -135,7 +346,7 @@ jQuery(document).ready(function($) {
                 offset: offset,
                 batch_size: 100
             }, function(response) {
-                if (response.success) {
+                if (response && response.success) {
                     if (response.data.continue) {
                         var percent = Math.round((response.data.processed / response.data.total) * 100);
                         $("#progress-bar-english-fix").css("width", percent + "%");
@@ -159,6 +370,7 @@ jQuery(document).ready(function($) {
                             response.data.fixed_terms + ' terms</div>'
                         );
                         $("#btn-fix-english").prop("disabled", false);
+                        self.debugLog('✅ English variants fix completed');
                         
                         setTimeout(function() {
                             self.runDiagnosis();
@@ -166,15 +378,19 @@ jQuery(document).ready(function($) {
                         }, 1500);
                     }
                 } else {
+                    var errorMsg = response && response.data ? response.data : 'Unknown error';
                     $("#english-fix-status").html(
-                        '<div class="status-message status-error">Error: ' + (response.data || "Unknown error") + '</div>'
+                        '<div class="status-message status-error">Error: ' + errorMsg + '</div>'
                     );
+                    self.debugLog('❌ English variants fix failed: ' + errorMsg, 'error');
                     $("#btn-fix-english").prop("disabled", false);
                 }
-            }).fail(function() {
+            }).fail(function(xhr, status, error) {
+                var errorMsg = 'Connection error: ' + error;
                 $("#english-fix-status").html(
-                    '<div class="status-message status-error">Connection error. Please try again.</div>'
+                    '<div class="status-message status-error">' + errorMsg + '</div>'
                 );
+                self.debugLog('❌ English variants fix failed: ' + errorMsg, 'error');
                 $("#btn-fix-english").prop("disabled", false);
             });
         },
@@ -191,6 +407,7 @@ jQuery(document).ready(function($) {
             $("#progress-woo-attributes").show();
             $("#woo-attributes-fix-status").html('<div class="status-message status-info">Analyzing attribute terms...</div>');
             $("#btn-fix-woo-attributes").prop("disabled", true);
+            self.debugLog('Starting WooCommerce attributes fix...');
             
             self.wooAttributesFixed = 0;
             self.processWooAttributesBatch(0);
@@ -208,7 +425,7 @@ jQuery(document).ready(function($) {
                 offset: offset,
                 batch_size: 100
             }, function(response) {
-                if (response.success) {
+                if (response && response.success) {
                     self.wooAttributesFixed += response.data.fixed;
                     
                     if (response.data.continue) {
@@ -232,21 +449,26 @@ jQuery(document).ready(function($) {
                             self.wooAttributesFixed + ' attribute terms</div>'
                         );
                         $("#btn-fix-woo-attributes").prop("disabled", false);
+                        self.debugLog('✅ WooCommerce attributes fix completed');
                         
                         setTimeout(function() {
                             self.runAnalysis();
                         }, 1500);
                     }
                 } else {
+                    var errorMsg = response && response.data ? response.data : 'Unknown error';
                     $("#woo-attributes-fix-status").html(
-                        '<div class="status-message status-error">Error: ' + (response.data || "Unknown error") + '</div>'
+                        '<div class="status-message status-error">Error: ' + errorMsg + '</div>'
                     );
+                    self.debugLog('❌ WooCommerce attributes fix failed: ' + errorMsg, 'error');
                     $("#btn-fix-woo-attributes").prop("disabled", false);
                 }
             }).fail(function() {
+                var errorMsg = 'Connection error. Please try again.';
                 $("#woo-attributes-fix-status").html(
-                    '<div class="status-message status-error">Connection error. Please try again.</div>'
+                    '<div class="status-message status-error">' + errorMsg + '</div>'
                 );
+                self.debugLog('❌ WooCommerce attributes fix failed: ' + errorMsg, 'error');
                 $("#btn-fix-woo-attributes").prop("disabled", false);
             });
         },
@@ -263,6 +485,7 @@ jQuery(document).ready(function($) {
             $("#progress-pll-prefix").show();
             $("#pll-prefix-fix-status").html('<div class="status-message status-info">Starting emergency fix...</div>');
             $("#btn-fix-pll-prefix").prop("disabled", true);
+            self.debugLog('Starting pll_ prefix emergency fix...');
             
             self.processPllBatch(0);
         },
@@ -279,7 +502,7 @@ jQuery(document).ready(function($) {
                 offset: offset,
                 batch_size: 100
             }, function(response) {
-                if (response.success) {
+                if (response && response.success) {
                     if (response.data.continue) {
                         var percent = Math.round((response.data.processed / response.data.total) * 100);
                         $("#progress-bar-pll-prefix").css("width", percent + "%");
@@ -301,6 +524,7 @@ jQuery(document).ready(function($) {
                             response.data.fixed + ' items with wrong pll_ prefix.</div>'
                         );
                         $("#btn-fix-pll-prefix").prop("disabled", false);
+                        self.debugLog('✅ pll_ prefix emergency fix completed');
                         
                         setTimeout(function() {
                             self.runDiagnosis();
@@ -308,15 +532,19 @@ jQuery(document).ready(function($) {
                         }, 1500);
                     }
                 } else {
+                    var errorMsg = response && response.data ? response.data : 'Unknown error';
                     $("#pll-prefix-fix-status").html(
-                        '<div class="status-message status-error">Error: ' + (response.data || "Unknown error") + '</div>'
+                        '<div class="status-message status-error">Error: ' + errorMsg + '</div>'
                     );
+                    self.debugLog('❌ pll_ prefix fix failed: ' + errorMsg, 'error');
                     $("#btn-fix-pll-prefix").prop("disabled", false);
                 }
             }).fail(function() {
+                var errorMsg = 'Connection error. Please try again.';
                 $("#pll-prefix-fix-status").html(
-                    '<div class="status-message status-error">Connection error. Please try again.</div>'
+                    '<div class="status-message status-error">' + errorMsg + '</div>'
                 );
+                self.debugLog('❌ pll_ prefix fix failed: ' + errorMsg, 'error');
                 $("#btn-fix-pll-prefix").prop("disabled", false);
             });
         },
@@ -336,12 +564,13 @@ jQuery(document).ready(function($) {
             $("#progress-" + type).show();
             $("#btn-" + type).prop("disabled", true);
             $("#status-" + type).removeClass().addClass("status-message status-info").html("Initializing...");
+            self.debugLog('Starting process: ' + type);
             
             self.processBatch(type, 0, 0, 0);
         },
         
         /**
-         * Process batch
+         * Process batch with enhanced error reporting
          */
         processBatch: function(type, offset, totalItems, totalFixed) {
             var self = this;
@@ -352,9 +581,10 @@ jQuery(document).ready(function($) {
                 type: type,
                 offset: offset,
                 batch_size: 20,
-                total_fixed: totalFixed
+                total_fixed: totalFixed,
+                debug: self.debugEnabled
             }, function(response) {
-                if (response.success) {
+                if (response && response.success) {
                     if (totalItems === 0) {
                         totalItems = response.data.total;
                     }
@@ -382,28 +612,73 @@ jQuery(document).ready(function($) {
                         $("#status-" + type).removeClass("status-info").addClass("status-success").html(
                             "✅ Complete! <strong>Fixed " + newTotalFixed + " items</strong> out of " + totalItems + " total"
                         );
+                        self.debugLog('✅ Process ' + type + ' completed. Fixed: ' + newTotalFixed + ' items');
                         
                         setTimeout(function() {
                             self.runAnalysis();
                         }, 1000);
                     }
                 } else {
+                    var errorMsg = response && response.data ? response.data : 'Unknown error';
                     $("#btn-" + type).prop("disabled", false);
                     $("#status-" + type).removeClass().addClass("status-message status-error").html(
-                        "Error: " + (response.data || "Unknown error")
+                        "Error: " + errorMsg
                     );
+                    self.debugLog('❌ Process ' + type + ' failed: ' + errorMsg, 'error');
                 }
             }).fail(function(xhr, status, error) {
+                var errorMsg = 'Connection error: ' + error + ' (Status: ' + status + ')';
                 $("#btn-" + type).prop("disabled", false);
                 $("#status-" + type).removeClass().addClass("status-message status-error").html(
-                    "Connection error: " + error + ". Please try again."
+                    errorMsg + '. Please try again.'
                 );
+                self.debugLog('❌ Process ' + type + ' failed: ' + errorMsg, 'error');
             });
         }
     };
     
     // Initialize with localized data if available
-    if (typeof wpmlFixerAjaxData !== 'undefined') {
-        $.extend(window.wpmlFixerAjax, wpmlFixerAjaxData);
+    if (typeof wpmlFixerAjax !== 'undefined') {
+        $.extend(window.wpmlFixerAjax, wpmlFixerAjax);
     }
+    
+    // Set up default strings if not provided
+    if (!window.wpmlFixerAjax.strings) {
+        window.wpmlFixerAjax.strings = {
+            confirmReset: 'Are you sure you want to reset the session?',
+            confirmFix: 'This will process all items. Continue?',
+            processing: 'Processing...',
+            complete: 'Complete!',
+            error: 'An error occurred. Please check the logs.'
+        };
+    }
+    
+    // Set up AJAX URL and nonce with proper fallbacks
+    if (!window.wpmlFixerAjax.ajaxUrl) {
+        window.wpmlFixerAjax.ajaxUrl = (typeof ajaxurl !== 'undefined') ? ajaxurl : '/wp-admin/admin-ajax.php';
+    }
+    
+    // Multiple fallback methods for nonce
+    if (!window.wpmlFixerAjax.nonce) {
+        // Try multiple sources for nonce
+        var possibleNonce = window.wpmlFixerNonce || 
+                           $('input[name="wpml_fixer_nonce"]').val() || 
+                           $('meta[name="wpml_fixer_nonce"]').attr('content') ||
+                           '';
+        
+        if (possibleNonce) {
+            window.wpmlFixerAjax.nonce = possibleNonce;
+            console.log('WPML Fixer: Using fallback nonce');
+        } else {
+            console.error('WPML Fixer: No nonce found! AJAX requests will fail.');
+        }
+    }
+    
+    // Set debug state from localized data
+    if (typeof window.wpmlFixerAjax.debug !== 'undefined') {
+        $('#debug-toggle').prop('checked', window.wpmlFixerAjax.debug);
+    }
+    
+    // Initialize the interface
+    window.wpmlFixerAjax.init();
 });

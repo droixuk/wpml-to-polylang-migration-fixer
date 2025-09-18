@@ -55,14 +55,23 @@ class WPML_Fixer_UI_Renderer {
                             ?>
                         </div>
                     </div>
+                    <div class="stat-box">
+                        <div class="stat-label"><?php _e('Debug Mode', 'wpml-migration-fixer'); ?></div>
+                        <div style="margin-top: 5px;">
+                            <label>
+                                <input type="checkbox" id="debug-toggle" <?php checked(get_option('wpml_to_polylang_fixer_debug_enabled', false)); ?>>
+                                <?php _e('Show Debug Info', 'wpml-migration-fixer'); ?>
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 
                 <div style="margin-top: 20px; display: flex; gap: 10px;">
                     <button id="btn-verify" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.verifyMigration()">
                         <?php _e('Verify Migration', 'wpml-migration-fixer'); ?>
                     </button>
-                    <button id="btn-analyze" class="wpml-btn" onclick="wpmlFixerAjax.runAnalysis()">
-                        <?php _e('Run Analysis', 'wpml-migration-fixer'); ?>
+                    <button id="btn-test-connection" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.testConnection()">
+                        <?php _e('Test Connection', 'wpml-migration-fixer'); ?>
                     </button>
                 </div>
                 
@@ -76,6 +85,15 @@ class WPML_Fixer_UI_Renderer {
                     <span class="accordion-arrow">▼</span>
                 </div>
                 <div class="accordion-content">
+                    <div style="margin-bottom: 15px;">
+                        <button id="btn-analyze" class="wpml-btn" onclick="wpmlFixerAjax.runAnalysis()">
+                            <?php _e('Run Analysis', 'wpml-migration-fixer'); ?>
+                        </button>
+                        <small style="margin-left: 10px; color: #666;">
+                            <?php _e('Analyze your content to check language assignments', 'wpml-migration-fixer'); ?>
+                        </small>
+                    </div>
+                    
                     <div id="analysis-results">
                         <p style="color: #666; font-size: 14px;">
                             <?php _e('Click "Run Analysis" above to check your content for language issues.', 'wpml-migration-fixer'); ?>
@@ -91,9 +109,14 @@ class WPML_Fixer_UI_Renderer {
                     <span class="accordion-arrow">▼</span>
                 </div>
                 <div class="accordion-content">
-                    <button id="btn-diagnose" class="wpml-btn" onclick="wpmlFixerAjax.runDiagnosis()">
-                        <?php _e('Run Language Diagnosis', 'wpml-migration-fixer'); ?>
-                    </button>
+                    <div style="margin-bottom: 15px;">
+                        <button id="btn-diagnose" class="wpml-btn" onclick="wpmlFixerAjax.runDiagnosis()">
+                            <?php _e('Run Language Diagnosis', 'wpml-migration-fixer'); ?>
+                        </button>
+                        <small style="margin-left: 10px; color: #666;">
+                            <?php _e('Identify specific language assignment problems', 'wpml-migration-fixer'); ?>
+                        </small>
+                    </div>
                     
                     <div id="diagnosis-results" style="margin-top: 15px;"></div>
                     
@@ -267,6 +290,17 @@ class WPML_Fixer_UI_Renderer {
                         <div id="status-translations" class="status-message"></div>
                     </div>
                 </div>
+            </div>
+            
+            <!-- Debug Console (Hidden by default) -->
+            <div id="debug-console" class="wpml-card" style="display: none; margin-top: 20px; background: #f5f5f5; border-left: 4px solid #ff9800;">
+                <h3>🐛 <?php _e('Debug Console', 'wpml-migration-fixer'); ?></h3>
+                <div id="debug-output" style="background: #000; color: #0f0; font-family: monospace; font-size: 12px; padding: 15px; border-radius: 5px; height: 200px; overflow-y: auto;">
+                    <div><?php _e('Debug console initialized...', 'wpml-migration-fixer'); ?></div>
+                </div>
+                <button onclick="wpmlFixerAjax.clearDebug()" class="wpml-btn wpml-btn-secondary" style="margin-top: 10px;">
+                    <?php _e('Clear Debug Log', 'wpml-migration-fixer'); ?>
+                </button>
             </div>
         </div>
         <?php

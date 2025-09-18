@@ -1,6 +1,6 @@
 /**
  * Admin styles for WPML Migration Fixer plugin
- * Version: 1.0.0
+ * Version: 1.0.1 - Enhanced with debug console styles
  */
 
 .wpml-fixer-container {
@@ -185,8 +185,17 @@
 }
 
 .status-error {
-    background: #ffebee;
-    color: #c62828;
+    background: #ffebee !important;
+    color: #c62828 !important;
+    border-left: 4px solid #f44336 !important;
+    font-weight: bold;
+}
+
+.status-error small {
+    font-weight: normal;
+    opacity: 0.8;
+    display: block;
+    margin-top: 5px;
 }
 
 .status-warning {
@@ -429,4 +438,76 @@
     margin-top: 10px;
     font-size: 12px;
     font-family: monospace;
+}
+
+/* Debug Console Styles */
+#debug-console {
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(255, 152, 0, 0.15);
+}
+
+#debug-console h3 {
+    margin: 0 0 15px 0;
+    color: #ff9800;
+    font-size: 18px;
+}
+
+#debug-output {
+    font-size: 11px;
+    line-height: 1.4;
+    max-height: 300px;
+    border: 1px solid #ddd;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+#debug-output::-webkit-scrollbar {
+    width: 8px;
+}
+
+#debug-output::-webkit-scrollbar-track {
+    background: #333;
+}
+
+#debug-output::-webkit-scrollbar-thumb {
+    background: #666;
+    border-radius: 4px;
+}
+
+#debug-output::-webkit-scrollbar-thumb:hover {
+    background: #888;
+}
+
+.debug-toggle-section {
+    background: #f0f0f1;
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+
+.debug-toggle-section label {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.debug-toggle-section input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+/* Enhanced error styling */
+.status-error pre {
+    background: rgba(255,255,255,0.8);
+    padding: 10px;
+    border-radius: 3px;
+    font-size: 11px;
+    overflow: auto;
+    max-height: 150px;
+    margin: 5px 0;
+}
+
+.status-error .debug-info {
+    background: rgba(255,255,255,0.9);
+    border: 1px solid rgba(196,40,40,0.2);
 }
