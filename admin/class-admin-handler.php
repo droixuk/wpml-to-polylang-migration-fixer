@@ -5,7 +5,7 @@
  * Handles admin interface for the WPML Migration Fixer plugin
  * 
  * @package WPML_Migration_Fixer
- * @since 1.0.0
+ * @since 1.0.1
  */
 
 if (!defined('ABSPATH')) {
@@ -36,6 +36,11 @@ class WPML_Fixer_Admin_Handler {
      * Admin page hook suffix
      */
     private $page_hook;
+    
+    /**
+     * Nonce action name
+     */
+    private $nonce_action = 'wpml_fixer_ajax';
     
     /**
      * Constructor
@@ -187,25 +192,27 @@ class WPML_Fixer_Admin_Handler {
     }
     
     /**
-     * Enqueue scripts
+     * Enqueue scripts - FIXED: Clean conflict-proof version
      */
     public function enqueue_scripts() {
         // Enqueue jQuery
         wp_enqueue_script('jquery');
         
-        // Enqueue our script
+        // Enqueue our script with updated version
         wp_enqueue_script(
             'wpml-fixer-admin',
             WPML_TO_POLYLANG_FIXER_PLUGIN_URL . 'assets/js/admin.js',
             ['jquery'],
-            defined('WPML_TO_POLYLANG_FIXER_VERSION') ? WPML_TO_POLYLANG_FIXER_VERSION : '1.0.0',
+            '1.0.5',
             true
         );
         
-        // Localize script
-        wp_localize_script('wpml-fixer-admin', 'wpmlFixerAjax', [
+        // Create clean data array
+        $script_data = [
             'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('wpml_fixer_ajax'),
+            'nonce' => wp_create_nonce($this->nonce_action),
+            'nonceName' => $this->nonce_action,
+            'debug' => get_option('wpml_to_polylang_fixer_debug_enabled', false),
             'strings' => [
                 'confirmReset' => __('Are you sure you want to reset the session?', 'wpml-migration-fixer'),
                 'confirmFix' => __('This will process all items. Continue?', 'wpml-migration-fixer'),
@@ -213,7 +220,17 @@ class WPML_Fixer_Admin_Handler {
                 'complete' => __('Complete!', 'wpml-migration-fixer'),
                 'error' => __('An error occurred. Please check the logs.', 'wpml-migration-fixer')
             ]
-        ]);
+        ];
+        
+        // Multiple backup sources to avoid Polylang conflicts
+        wp_localize_script('wpml-fixer-admin', 'wpmlFixerAjax', $script_data);
+        wp_localize_script('wpml-fixer-admin', 'wpmlFixerBackup', $script_data);
+        wp_localize_script('wpml-fixer-admin', 'wpmlMigrationData', $script_data);
+        
+        // Log successful localization
+        if ($this->logger) {
+            $this->logger->log('Scripts enqueued successfully with nonce: ' . substr(wp_create_nonce($this->nonce_action), 0, 10), 'debug');
+        }
     }
     
     /**

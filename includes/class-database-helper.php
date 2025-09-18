@@ -95,34 +95,41 @@ class WPML_To_Polylang_Fixer_Database_Helper {
             'details' => []
         ];
         
-        $results['posts'] = $wpdb->get_var($wpdb->prepare("
-            SELECT COUNT(DISTINCT tr.object_id)
-            FROM {$wpdb->term_relationships} tr
-            JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
-            JOIN {$wpdb->terms} t ON tt.term_id = t.term_id
-            WHERE tt.taxonomy = 'language'
-            AND t.slug LIKE %s
-        ", $code_pattern));
-        
-        $results['terms'] = $wpdb->get_var($wpdb->prepare("
-            SELECT COUNT(DISTINCT tr.object_id)
-            FROM {$wpdb->term_relationships} tr
-            JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
-            JOIN {$wpdb->terms} t ON tt.term_id = t.term_id
-            WHERE tt.taxonomy = 'term_language'
-            AND t.slug LIKE %s
-        ", $code_pattern));
-        
-        $wrong_codes = $wpdb->get_col($wpdb->prepare("
-            SELECT DISTINCT t.slug
-            FROM {$wpdb->terms} t
-            JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
-            WHERE tt.taxonomy IN ('language', 'term_language')
-            AND t.slug LIKE %s
-            LIMIT 10
-        ", $code_pattern));
-        
-        $results['details'] = $wrong_codes;
+        try {
+            $results['posts'] = $wpdb->get_var($wpdb->prepare("
+                SELECT COUNT(DISTINCT tr.object_id)
+                FROM {$wpdb->term_relationships} tr
+                JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+                JOIN {$wpdb->terms} t ON tt.term_id = t.term_id
+                WHERE tt.taxonomy = 'language'
+                AND t.slug LIKE %s
+            ", $code_pattern));
+            
+            $results['terms'] = $wpdb->get_var($wpdb->prepare("
+                SELECT COUNT(DISTINCT tr.object_id)
+                FROM {$wpdb->term_relationships} tr
+                JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+                JOIN {$wpdb->terms} t ON tt.term_id = t.term_id
+                WHERE tt.taxonomy = 'term_language'
+                AND t.slug LIKE %s
+            ", $code_pattern));
+            
+            $wrong_codes = $wpdb->get_col($wpdb->prepare("
+                SELECT DISTINCT t.slug
+                FROM {$wpdb->terms} t
+                JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy IN ('language', 'term_language')
+                AND t.slug LIKE %s
+                LIMIT 10
+            ", $code_pattern));
+            
+            $results['details'] = $wrong_codes;
+            
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Error getting content with wrong codes", $e);
+            }
+        }
         
         return $results;
     }
@@ -204,86 +211,125 @@ class WPML_To_Polylang_Fixer_Database_Helper {
             'terms_with_language' => 0,
             'terms_without_language' => 0,
             'translation_groups' => 0,
-            'problematic_codes' => 0
+            'problematic_codes' => 0,
+            'post_types_breakdown' => []
         ];
         
-        // Get post types to check
-        $post_types = get_post_types(['public' => true], 'names');
-        $post_types = array_diff($post_types, $this->get_excluded_post_types());
-        
-        if (!empty($post_types)) {
-            $post_types_str = "'" . implode("','", esc_sql($post_types)) . "'";
+        try {
+            // Get post types to check
+            $post_types = get_post_types(['public' => true], 'names');
+            $post_types = array_diff($post_types, $this->get_excluded_post_types());
             
-            $total_posts = $wpdb->get_var("
-                SELECT COUNT(*) FROM {$wpdb->posts}
-                WHERE post_type IN ($post_types_str)
-                AND post_status IN ('publish', 'draft', 'private')
-            ");
+            if (!empty($post_types)) {
+                // Escape and quote post types for SQL
+                $post_types_sql = array_map('esc_sql', $post_types);
+                $post_types_str = "'" . implode("','", $post_types_sql) . "'";
+                
+                $total_posts = $wpdb->get_var("
+                    SELECT COUNT(*) FROM {$wpdb->posts}
+                    WHERE post_type IN ({$post_types_str})
+                    AND post_status IN ('publish', 'draft', 'private')
+                ");
+                
+                $posts_with_lang = $wpdb->get_var("
+                    SELECT COUNT(DISTINCT p.ID)
+                    FROM {$wpdb->posts} p
+                    JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+                    JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+                    WHERE p.post_type IN ({$post_types_str})
+                    AND p.post_status IN ('publish', 'draft', 'private')
+                    AND tt.taxonomy = 'language'
+                ");
+                
+                $stats['posts_with_language'] = intval($posts_with_lang);
+                $stats['posts_without_language'] = intval($total_posts) - intval($posts_with_lang);
+                
+                // Get breakdown by post type
+                $breakdown_results = $wpdb->get_results("
+                    SELECT 
+                        p.post_type,
+                        COUNT(*) as total,
+                        COUNT(tr.object_id) as with_language
+                    FROM {$wpdb->posts} p
+                    LEFT JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+                    LEFT JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id AND tt.taxonomy = 'language'
+                    WHERE p.post_type IN ({$post_types_str})
+                    AND p.post_status IN ('publish', 'draft', 'private')
+                    GROUP BY p.post_type
+                ");
+                
+                foreach ($breakdown_results as $result) {
+                    $stats['post_types_breakdown'][$result->post_type] = [
+                        'total' => intval($result->total),
+                        'with_language' => intval($result->with_language),
+                        'without_language' => intval($result->total) - intval($result->with_language)
+                    ];
+                }
+            }
             
-            $posts_with_lang = $wpdb->get_var("
-                SELECT COUNT(DISTINCT p.ID)
-                FROM {$wpdb->posts} p
-                JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
-                JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
-                WHERE p.post_type IN ($post_types_str)
-                AND p.post_status IN ('publish', 'draft', 'private')
-                AND tt.taxonomy = 'language'
-            ");
+            // Get taxonomies to check
+            $taxonomies = get_taxonomies(['public' => true], 'names');
+            $taxonomies = array_diff($taxonomies, $this->get_excluded_taxonomies());
             
-            $stats['posts_with_language'] = intval($posts_with_lang);
-            $stats['posts_without_language'] = intval($total_posts) - intval($posts_with_lang);
-        }
-        
-        // Get taxonomies to check
-        $taxonomies = get_taxonomies(['public' => true], 'names');
-        $taxonomies = array_diff($taxonomies, $this->get_excluded_taxonomies());
-        
-        if (!empty($taxonomies)) {
-            $taxonomies_str = "'" . implode("','", esc_sql($taxonomies)) . "'";
+            if (!empty($taxonomies)) {
+                // Escape and quote taxonomies for SQL
+                $taxonomies_sql = array_map('esc_sql', $taxonomies);
+                $taxonomies_str = "'" . implode("','", $taxonomies_sql) . "'";
+                
+                $total_terms = $wpdb->get_var("
+                    SELECT COUNT(DISTINCT t.term_id)
+                    FROM {$wpdb->terms} t
+                    JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                    WHERE tt.taxonomy IN ({$taxonomies_str})
+                ");
+                
+                $terms_with_lang = $wpdb->get_var("
+                    SELECT COUNT(DISTINCT t.term_id)
+                    FROM {$wpdb->terms} t
+                    JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                    WHERE tt.taxonomy IN ({$taxonomies_str})
+                    AND EXISTS (
+                        SELECT 1 FROM {$wpdb->term_relationships} tr2
+                        JOIN {$wpdb->term_taxonomy} tt2 ON tr2.term_taxonomy_id = tt2.term_taxonomy_id
+                        WHERE tr2.object_id = t.term_id AND tt2.taxonomy = 'term_language'
+                    )
+                ");
+                
+                $stats['terms_with_language'] = intval($terms_with_lang);
+                $stats['terms_without_language'] = intval($total_terms) - intval($terms_with_lang);
+            }
             
-            $total_terms = $wpdb->get_var("
-                SELECT COUNT(DISTINCT t.term_id)
+            // Check for translation groups
+            if ($this->wpml_tables_exist()) {
+                $translation_groups = $wpdb->get_var("
+                    SELECT COUNT(DISTINCT trid) FROM {$this->icl_table}
+                    WHERE trid IN (
+                        SELECT trid FROM {$this->icl_table}
+                        GROUP BY trid
+                        HAVING COUNT(*) > 1
+                    )
+                ");
+                $stats['translation_groups'] = intval($translation_groups);
+            }
+            
+            // Check for problematic codes
+            $problematic_codes = $wpdb->get_var("
+                SELECT COUNT(DISTINCT t.slug)
                 FROM {$wpdb->terms} t
                 JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
-                WHERE tt.taxonomy IN ($taxonomies_str)
+                WHERE tt.taxonomy IN ('language', 'term_language')
+                AND t.slug LIKE 'pll_%'
             ");
+            $stats['problematic_codes'] = intval($problematic_codes);
             
-            $terms_with_lang = $wpdb->get_var("
-                SELECT COUNT(DISTINCT t.term_id)
-                FROM {$wpdb->terms} t
-                JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
-                WHERE tt.taxonomy IN ($taxonomies_str)
-                AND EXISTS (
-                    SELECT 1 FROM {$wpdb->term_relationships} tr2
-                    JOIN {$wpdb->term_taxonomy} tt2 ON tr2.term_taxonomy_id = tt2.term_taxonomy_id
-                    WHERE tr2.object_id = t.term_id AND tt2.taxonomy = 'term_language'
-                )
-            ");
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Error getting migration statistics", $e);
+            }
             
-            $stats['terms_with_language'] = intval($terms_with_lang);
-            $stats['terms_without_language'] = intval($total_terms) - intval($terms_with_lang);
+            // Return basic stats structure even on error
+            return $stats;
         }
-        
-        // Check for translation groups
-        if ($this->wpml_tables_exist()) {
-            $stats['translation_groups'] = $wpdb->get_var("
-                SELECT COUNT(DISTINCT trid) FROM {$this->icl_table}
-                WHERE trid IN (
-                    SELECT trid FROM {$this->icl_table}
-                    GROUP BY trid
-                    HAVING COUNT(*) > 1
-                )
-            ");
-        }
-        
-        // Check for problematic codes
-        $stats['problematic_codes'] = $wpdb->get_var("
-            SELECT COUNT(DISTINCT t.slug)
-            FROM {$wpdb->terms} t
-            JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
-            WHERE tt.taxonomy IN ('language', 'term_language')
-            AND t.slug LIKE 'pll_%'
-        ");
         
         return $stats;
     }
