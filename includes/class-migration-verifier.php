@@ -3,10 +3,10 @@
  * Enhanced Migration Verifier Class
  * 
  * Comprehensive verification of WPML to Polylang migration
- * Based on actual migration process analysis
+ * Enhanced with BetterDocs support
  * 
  * @package WPML_To_Polylang_Migration_Fixer
- * @since 1.1.0
+ * @since 1.1.1
  */
 
 if (!defined('ABSPATH')) {
@@ -42,6 +42,7 @@ class WPML_To_Polylang_Migration_Verifier {
             'menus' => $this->verify_menus(),
             'strings' => $this->verify_strings(),
             'options' => $this->verify_options(),
+            'betterdocs' => $this->verify_betterdocs(),  // NEW: BetterDocs verification
             'wpml_data' => $this->check_wpml_data_exists()
         ];
         
@@ -57,6 +58,213 @@ class WPML_To_Polylang_Migration_Verifier {
         $results['total_critical_issues'] = $critical_issues;
         
         return $results;
+    }
+    
+    /**
+     * NEW: Verify BetterDocs migration
+     */
+    private function verify_betterdocs() {
+        $verification = [
+            'status' => 'checking',
+            'issues' => [],
+            'critical_issues' => 0,
+            'betterdocs_active' => false,
+            'docs_with_language' => 0,
+            'docs_without_language' => 0,
+            'total_docs' => 0,
+            'doc_categories_with_language' => 0,
+            'doc_categories_without_language' => 0,
+            'total_doc_categories' => 0,
+            'doc_tags_with_language' => 0,
+            'doc_tags_without_language' => 0,
+            'total_doc_tags' => 0,
+            'knowledge_bases_with_language' => 0,
+            'knowledge_bases_without_language' => 0,
+            'total_knowledge_bases' => 0,
+            'wpml_docs_trids' => 0,
+            'pll_docs_groups' => 0,
+            'wpml_doc_term_trids' => 0,
+            'pll_doc_term_groups' => 0
+        ];
+        
+        try {
+            // Check if BetterDocs is active (check for docs post type)
+            $verification['betterdocs_active'] = post_type_exists('docs');
+            
+            if (!$verification['betterdocs_active']) {
+                $verification['status'] = 'not_applicable';
+                return $verification;
+            }
+            
+            // Verify docs post type
+            $this->verify_betterdocs_posts($verification);
+            
+            // Verify BetterDocs taxonomies
+            $this->verify_betterdocs_taxonomies($verification);
+            
+            // Verify BetterDocs translation groups (if WPML data exists)
+            if ($this->wpml_tables_exist()) {
+                $this->verify_betterdocs_translation_groups($verification);
+            }
+            
+            // Determine overall status
+            $verification['status'] = $verification['critical_issues'] === 0 ? 'success' : 'issues';
+            
+            if ($this->logger) {
+                $this->logger->log("BetterDocs verification completed - Issues: {$verification['critical_issues']}", 'info');
+            }
+            
+        } catch (Exception $e) {
+            $verification['status'] = 'error';
+            $verification['issues'][] = 'Error checking BetterDocs: ' . $e->getMessage();
+            if ($this->logger) {
+                $this->logger->log_error('BetterDocs verification failed', $e);
+            }
+        }
+        
+        return $verification;
+    }
+    
+    /**
+     * Verify BetterDocs posts (docs post type)
+     */
+    private function verify_betterdocs_posts(&$verification) {
+        // Get total docs count
+        $verification['total_docs'] = $this->wpdb->get_var("
+            SELECT COUNT(*)
+            FROM {$this->wpdb->posts}
+            WHERE post_type = 'docs'
+            AND post_status IN ('publish', 'draft', 'private')
+        ");
+        
+        // Get docs with language assignment
+        $verification['docs_with_language'] = $this->wpdb->get_var("
+            SELECT COUNT(DISTINCT p.ID)
+            FROM {$this->wpdb->posts} p
+            JOIN {$this->wpdb->term_relationships} tr ON p.ID = tr.object_id
+            JOIN {$this->wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+            WHERE p.post_type = 'docs'
+            AND p.post_status IN ('publish', 'draft', 'private')
+            AND tt.taxonomy = 'language'
+        ");
+        
+        $verification['docs_without_language'] = $verification['total_docs'] - $verification['docs_with_language'];
+        
+        if ($verification['docs_without_language'] > 0) {
+            $verification['critical_issues'] += $verification['docs_without_language'];
+            $verification['issues'][] = "Found {$verification['docs_without_language']} docs without language assignment";
+        }
+    }
+    
+    /**
+     * Verify BetterDocs taxonomies
+     */
+    private function verify_betterdocs_taxonomies(&$verification) {
+        $bd_taxonomies = [
+            'doc_category' => 'doc_categories',
+            'doc_tag' => 'doc_tags', 
+            'knowledge_base' => 'knowledge_bases'
+        ];
+        
+        foreach ($bd_taxonomies as $taxonomy => $field_prefix) {
+            // Check if taxonomy exists
+            if (!taxonomy_exists($taxonomy)) {
+                continue;
+            }
+            
+            // Get total terms count
+            $total_field = 'total_' . $field_prefix;
+            $verification[$total_field] = $this->wpdb->get_var($this->wpdb->prepare("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$this->wpdb->terms} t
+                JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy = %s
+            ", $taxonomy));
+            
+            // Get terms with language assignment
+            $with_lang_field = $field_prefix . '_with_language';
+            $verification[$with_lang_field] = $this->wpdb->get_var($this->wpdb->prepare("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$this->wpdb->terms} t
+                JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy = %s
+                AND EXISTS (
+                    SELECT 1 FROM {$this->wpdb->term_relationships} tr2
+                    JOIN {$this->wpdb->term_taxonomy} tt2 ON tr2.term_taxonomy_id = tt2.term_taxonomy_id
+                    WHERE tr2.object_id = t.term_id AND tt2.taxonomy = 'term_language'
+                )
+            ", $taxonomy));
+            
+            $without_lang_field = $field_prefix . '_without_language';
+            $verification[$without_lang_field] = $verification[$total_field] - $verification[$with_lang_field];
+            
+            if ($verification[$without_lang_field] > 0) {
+                $verification['critical_issues'] += $verification[$without_lang_field];
+                $verification['issues'][] = "Found {$verification[$without_lang_field]} {$taxonomy} terms without language assignment";
+            }
+        }
+    }
+    
+    /**
+     * Verify BetterDocs translation groups
+     */
+    private function verify_betterdocs_translation_groups(&$verification) {
+        // Get WPML docs translation groups
+        $verification['wpml_docs_trids'] = $this->wpdb->get_var("
+            SELECT COUNT(DISTINCT trid)
+            FROM {$this->icl_table}
+            WHERE element_type = 'post_docs'
+            AND trid IN (
+                SELECT trid FROM {$this->icl_table}
+                WHERE element_type = 'post_docs'
+                GROUP BY trid HAVING COUNT(*) > 1
+            )
+        ");
+        
+        // Get PLL docs translation groups
+        $verification['pll_docs_groups'] = $this->wpdb->get_var("
+            SELECT COUNT(*)
+            FROM {$this->wpdb->term_taxonomy} tt
+            JOIN {$this->wpdb->terms} t ON tt.term_id = t.term_id
+            WHERE tt.taxonomy = 'post_translations'
+            AND t.slug LIKE 'pll_wpml_%'
+            AND tt.description LIKE '%\"docs\"%'
+        ");
+        
+        // Get WPML BetterDocs term translation groups
+        $verification['wpml_doc_term_trids'] = $this->wpdb->get_var("
+            SELECT COUNT(DISTINCT trid)
+            FROM {$this->icl_table}
+            WHERE element_type IN ('tax_doc_category', 'tax_doc_tag', 'tax_knowledge_base')
+            AND trid IN (
+                SELECT trid FROM {$this->icl_table}
+                WHERE element_type IN ('tax_doc_category', 'tax_doc_tag', 'tax_knowledge_base')
+                GROUP BY trid HAVING COUNT(*) > 1
+            )
+        ");
+        
+        // Get PLL BetterDocs term translation groups
+        $verification['pll_doc_term_groups'] = $this->wpdb->get_var("
+            SELECT COUNT(*)
+            FROM {$this->wpdb->term_taxonomy} tt
+            JOIN {$this->wpdb->terms} t ON tt.term_id = t.term_id
+            WHERE tt.taxonomy = 'term_translations'
+            AND t.slug LIKE 'pll_wpml_%'
+            AND (tt.description LIKE '%\"doc_category\"%' 
+                 OR tt.description LIKE '%\"doc_tag\"%' 
+                 OR tt.description LIKE '%\"knowledge_base\"%')
+        ");
+        
+        // Check for missing translation groups
+        if ($verification['wpml_docs_trids'] > 0 && $verification['pll_docs_groups'] == 0) {
+            $verification['critical_issues']++;
+            $verification['issues'][] = "WPML had {$verification['wpml_docs_trids']} docs translation groups but no Polylang groups found";
+        }
+        
+        if ($verification['wpml_doc_term_trids'] > 0 && $verification['pll_doc_term_groups'] == 0) {
+            $verification['critical_issues']++;
+            $verification['issues'][] = "WPML had {$verification['wpml_doc_term_trids']} BetterDocs term translation groups but no Polylang groups found";
+        }
     }
     
     /**
@@ -191,7 +399,7 @@ class WPML_To_Polylang_Migration_Verifier {
                 JOIN {$this->wpdb->term_relationships} tr ON p.ID = tr.object_id
                 JOIN {$this->wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
                 WHERE tt.taxonomy = 'language'
-                AND p.post_type IN ('post', 'page', 'product', 'docs', 'betterdocs')
+                AND p.post_type IN ('post', 'page', 'product', 'docs')
                 AND p.post_status IN ('publish', 'draft', 'private')
             ");
             $verification['posts_with_language'] = intval($posts_with_language);
@@ -199,7 +407,7 @@ class WPML_To_Polylang_Migration_Verifier {
             $total_posts = $this->wpdb->get_var("
                 SELECT COUNT(*)
                 FROM {$this->wpdb->posts}
-                WHERE post_type IN ('post', 'page', 'product', 'docs', 'betterdocs')
+                WHERE post_type IN ('post', 'page', 'product', 'docs')
                 AND post_status IN ('publish', 'draft', 'private')
             ");
             
@@ -686,6 +894,9 @@ class WPML_To_Polylang_Migration_Verifier {
                     break;
                 case 'translation_groups':
                     $summary['quick_stats']['invalid_groups'] = $data['invalid_groups'] ?? 0;
+                    break;
+                case 'betterdocs':
+                    $summary['quick_stats']['docs_without_language'] = $data['docs_without_language'] ?? 0;
                     break;
             }
         }

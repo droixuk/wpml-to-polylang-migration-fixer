@@ -1,6 +1,6 @@
 /**
  * Admin JavaScript for WPML Migration Fixer plugin
- * Version: 1.1.0 - Enhanced with comprehensive verification
+ * Version: 1.1.2 - Enhanced with batch processing implementation
  */
 
 jQuery(document).ready(function($) {
@@ -15,7 +15,8 @@ jQuery(document).ready(function($) {
         ajaxUrl: '',
         nonce: '',
         nonceName: '',
-        strings: {}
+        strings: {},
+        processingStates: {} // Track processing state for each type
     });
     
     // Try to load localization data from multiple sources
@@ -87,7 +88,7 @@ jQuery(document).ready(function($) {
                 self.debugLog('Debug mode ' + (self.debugEnabled ? 'enabled' : 'disabled'));
             });
             
-            self.debugLog('WPML Migration Fixer initialized');
+            self.debugLog('WPML Migration Fixer initialized with batch processing');
         },
         
         /**
@@ -334,6 +335,195 @@ jQuery(document).ready(function($) {
         },
         
         /**
+         * NEW: Start batch processing for different types
+         */
+        startProcess: function(type) {
+            var self = this;
+            
+            // Prevent multiple simultaneous processes
+            if (self.processingStates[type]) {
+                self.debugLog('Process ' + type + ' already running, ignoring request', 'warning');
+                return;
+            }
+            
+            // Confirm before starting
+            if (!confirm(self.strings.confirmFix)) {
+                return;
+            }
+            
+            self.debugLog('Starting process: ' + type);
+            
+            // Initialize processing state
+            self.processingStates[type] = {
+                running: true,
+                offset: 0,
+                total: 0,
+                fixed: 0
+            };
+            
+            // Update UI
+            self.updateProcessUI(type, 'starting');
+            
+            // Start the batch processing
+            self.processBatch(type, 0, 20); // Start with offset 0, batch size 20
+        },
+        
+        /**
+         * NEW: Process a batch for a specific type
+         */
+        processBatch: function(type, offset, batchSize) {
+            var self = this;
+            
+            if (!self.processingStates[type] || !self.processingStates[type].running) {
+                self.debugLog('Process ' + type + ' stopped or not initialized', 'warning');
+                return;
+            }
+            
+            self.debugLog('Processing batch for ' + type + ' - offset: ' + offset + ', batch: ' + batchSize);
+            
+            var requestData = self.createRequestData("wpml_fixer_ajax_process", {
+                type: type,
+                offset: offset,
+                batch_size: batchSize
+            });
+            
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success) {
+                        var result = response.data;
+                        
+                        // Update processing state
+                        var state = self.processingStates[type];
+                        state.total = result.total || state.total;
+                        state.fixed += result.fixed || 0;
+                        
+                        // Update UI
+                        self.updateProcessUI(type, 'processing', {
+                            processed: result.processed,
+                            total: result.total,
+                            fixed: state.fixed,
+                            message: result.message
+                        });
+                        
+                        self.debugLog('Batch completed for ' + type + ': ' + 
+                                     'processed=' + result.processed + 
+                                     ', fixed=' + result.fixed + 
+                                     ', continue=' + result.continue);
+                        
+                        // Continue with next batch if needed
+                        if (result.continue && result.next_offset !== undefined) {
+                            setTimeout(function() {
+                                self.processBatch(type, result.next_offset, batchSize);
+                            }, 100); // Small delay to prevent overwhelming the server
+                        } else {
+                            // Processing complete
+                            self.processingStates[type].running = false;
+                            self.updateProcessUI(type, 'complete', {
+                                processed: result.processed,
+                                total: result.total,
+                                fixed: state.fixed,
+                                message: result.message || 'Complete!'
+                            });
+                            
+                            self.debugLog('Process ' + type + ' completed successfully');
+                            self.showTemporaryMessage('Process ' + type + ' completed!', 'success');
+                        }
+                    } else {
+                        var errorMsg = response && response.data ? response.data : 'Unknown error';
+                        self.processingStates[type].running = false;
+                        self.updateProcessUI(type, 'error', { message: errorMsg });
+                        self.debugLog('❌ Process ' + type + ' failed: ' + errorMsg, 'error');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    self.processingStates[type].running = false;
+                    self.updateProcessUI(type, 'error', { message: error });
+                    self.debugLog('❌ Process ' + type + ' failed: ' + error, 'error');
+                });
+        },
+        
+        /**
+         * NEW: Update processing UI elements
+         */
+        updateProcessUI: function(type, status, data) {
+            var self = this;
+            data = data || {};
+            
+            var button = $('#btn-' + type);
+            var progressWrapper = $('#progress-' + type);
+            var progressBar = $('#progress-bar-' + type);
+            var progressText = $('#progress-text-' + type);
+            var statusDiv = $('#status-' + type);
+            
+            switch (status) {
+                case 'starting':
+                    button.prop('disabled', true).text(self.strings.processing);
+                    progressWrapper.show();
+                    progressBar.css('width', '0%');
+                    
+                    if (type === 'translations') {
+                        progressText.text('Phase 1: Corrupted Groups');
+                        statusDiv.html('<div class="status-message status-info">Starting 3-phase repair: Corrupted → Posts → Terms</div>');
+                    } else {
+                        progressText.text('Starting...');
+                        statusDiv.html('<div class="status-message status-info">Initializing...</div>');
+                    }
+                    break;
+                    break;
+                    
+                case 'processing':
+                    var percentage = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
+                    progressBar.css('width', percentage + '%');
+                    progressText.text(percentage + '%');
+                    
+                    var message = data.message || 'Processing...';
+                    if (data.fixed !== undefined) {
+                        message += ' (Fixed: ' + data.fixed + ')';
+                    }
+                    
+                    // Special handling for translation groups phases
+                    if (type === 'translations' && data.message) {
+                        if (data.message.includes('corrupted')) {
+                            progressText.text(percentage + '% - Phase 1');
+                        } else if (data.message.includes('post groups')) {
+                            progressText.text(percentage + '% - Phase 2');
+                        } else if (data.message.includes('term groups')) {
+                            progressText.text(percentage + '% - Phase 3');
+                        }
+                    }
+                    
+                    statusDiv.html('<div class="status-message status-info">' + message + '</div>');
+                    break;
+                    
+                case 'complete':
+                    button.prop('disabled', false).text(button.data('original-text') || 'Fix ' + type);
+                    progressBar.css('width', '100%');
+                    progressText.text('100%');
+                    
+                    var completeMessage = data.message || 'Complete!';
+                    if (data.fixed !== undefined) {
+                        completeMessage += ' (Total Fixed: ' + data.fixed + ')';
+                    }
+                    
+                    statusDiv.html('<div class="status-message status-success">' + completeMessage + '</div>');
+                    
+                    // Hide progress after a delay
+                    setTimeout(function() {
+                        progressWrapper.fadeOut();
+                    }, 3000);
+                    break;
+                    
+                case 'error':
+                    button.prop('disabled', false).text(button.data('original-text') || 'Fix ' + type);
+                    progressBar.css('width', '0%');
+                    progressText.text('Error');
+                    statusDiv.html('<div class="status-message status-error">' + (data.message || 'An error occurred') + '</div>');
+                    progressWrapper.fadeOut();
+                    break;
+            }
+        },
+        
+        /**
          * Show temporary message
          */
         showTemporaryMessage: function(message, type) {
@@ -399,12 +589,6 @@ jQuery(document).ready(function($) {
             alert('Fix English Variants functionality available - refer to existing implementation');
         },
         
-        startProcess: function(type) {
-            this.debugLog('Start process called for: ' + type + ' - using existing implementation', 'info');
-            // This would call the existing implementation from the current plugin
-            alert('Process "' + type + '" functionality available - refer to existing implementation');
-        },
-        
         fixWooAttributes: function() {
             this.debugLog('Fix WooCommerce attributes called - using existing implementation', 'info');
             // This would call the existing implementation from the current plugin
@@ -414,11 +598,17 @@ jQuery(document).ready(function($) {
         resetSession: function() {
             if (confirm(this.strings.confirmReset)) {
                 this.sessionFixed = {};
+                this.processingStates = {}; // Reset processing states
                 var requestData = this.createRequestData("wpml_fixer_ajax_reset_session");
                 $.post(this.ajaxUrl, requestData);
                 this.debugLog('Session reset', 'info');
             }
         }
+    });
+    
+    // Store original button text for restoration
+    $('[id^="btn-"]').each(function() {
+        $(this).data('original-text', $(this).text());
     });
     
     // Set debug state from checkbox
@@ -429,5 +619,5 @@ jQuery(document).ready(function($) {
     // Initialize the interface
     window.wpmlFixerAjax.init();
     
-    console.log('WPML Fixer: Enhanced JavaScript loaded successfully');
+    console.log('WPML Fixer: Enhanced JavaScript with batch processing loaded successfully');
 });

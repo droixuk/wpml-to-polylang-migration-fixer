@@ -3,9 +3,10 @@
  * Database Helper Class
  * 
  * Handles database operations for the WPML to Polylang Migration Fixer plugin
+ * Enhanced with BetterDocs support
  * 
  * @package WPML_To_Polylang_Migration_Fixer
- * @since 1.0.0
+ * @since 1.1.2
  */
 
 if (!defined('ABSPATH')) {
@@ -177,6 +178,9 @@ class WPML_To_Polylang_Fixer_Database_Helper {
         }
     }
     
+    /**
+     * Enhanced excluded post types with BetterDocs support
+     */
     public function get_excluded_post_types() {
         $excluded = [
             'attachment', 'oembed_cache', 'wp_global_styles', 'wpcode', 
@@ -187,9 +191,15 @@ class WPML_To_Polylang_Fixer_Database_Helper {
             'nav_menu_item', 'custom_css', 'customize_changeset', 'wp_pattern'
         ];
         
+        // Note: 'docs' is NOT excluded - we want to process BetterDocs
+        // Note: 'product' and 'product_variation' are NOT excluded - we want to process WooCommerce
+        
         return apply_filters('wpml_to_polylang_fixer_excluded_post_types', $excluded);
     }
     
+    /**
+     * Enhanced excluded taxonomies ensuring BetterDocs taxonomies are processed
+     */
     public function get_excluded_taxonomies() {
         $excluded = [
             'language', 'post_translations', 'term_translations', 'post_format',
@@ -199,9 +209,25 @@ class WPML_To_Polylang_Fixer_Database_Helper {
             'link_category', 'wp_pattern_category'
         ];
         
+        // IMPORTANT: BetterDocs taxonomies are NOT excluded:
+        // - doc_category
+        // - doc_tag  
+        // - knowledge_base
+        // These will be processed by the taxonomy fixer
+        
+        // IMPORTANT: WooCommerce taxonomies are NOT excluded:
+        // - product_cat
+        // - product_tag
+        // - product_shipping_class
+        // - pa_* (product attributes)
+        // These will be processed by the taxonomy fixer
+        
         return apply_filters('wpml_to_polylang_fixer_excluded_taxonomies', $excluded);
     }
     
+    /**
+     * Enhanced migration statistics with BetterDocs support
+     */
     public function get_migration_statistics() {
         global $wpdb;
         
@@ -216,9 +242,14 @@ class WPML_To_Polylang_Fixer_Database_Helper {
         ];
         
         try {
-            // Get post types to check
+            // Get post types to check (including BetterDocs)
             $post_types = get_post_types(['public' => true], 'names');
             $post_types = array_diff($post_types, $this->get_excluded_post_types());
+            
+            // Ensure BetterDocs is included if it exists
+            if (post_type_exists('docs') && !in_array('docs', $post_types)) {
+                $post_types[] = 'docs';
+            }
             
             if (!empty($post_types)) {
                 // Escape and quote post types for SQL
@@ -244,7 +275,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                 $stats['posts_with_language'] = intval($posts_with_lang);
                 $stats['posts_without_language'] = intval($total_posts) - intval($posts_with_lang);
                 
-                // Get breakdown by post type
+                // Get breakdown by post type with enhanced BetterDocs detection
                 $breakdown_results = $wpdb->get_results("
                     SELECT 
                         p.post_type,
@@ -267,9 +298,17 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                 }
             }
             
-            // Get taxonomies to check
+            // Get taxonomies to check (including BetterDocs)
             $taxonomies = get_taxonomies(['public' => true], 'names');
             $taxonomies = array_diff($taxonomies, $this->get_excluded_taxonomies());
+            
+            // Ensure BetterDocs taxonomies are included if they exist
+            $betterdocs_taxonomies = ['doc_category', 'doc_tag', 'knowledge_base'];
+            foreach ($betterdocs_taxonomies as $bd_tax) {
+                if (taxonomy_exists($bd_tax) && !in_array($bd_tax, $taxonomies)) {
+                    $taxonomies[] = $bd_tax;
+                }
+            }
             
             if (!empty($taxonomies)) {
                 // Escape and quote taxonomies for SQL
@@ -358,5 +397,92 @@ class WPML_To_Polylang_Fixer_Database_Helper {
         }
         
         return $cleaned;
+    }
+    
+    /**
+     * NEW: Get BetterDocs statistics
+     */
+    public function get_betterdocs_statistics() {
+        global $wpdb;
+        
+        $stats = [
+            'active' => post_type_exists('docs'),
+            'docs_total' => 0,
+            'docs_with_language' => 0,
+            'docs_without_language' => 0,
+            'categories_total' => 0,
+            'categories_with_language' => 0,
+            'categories_without_language' => 0,
+            'tags_total' => 0,
+            'tags_with_language' => 0,
+            'tags_without_language' => 0
+        ];
+        
+        if (!$stats['active']) {
+            return $stats;
+        }
+        
+        try {
+            // Docs statistics
+            $stats['docs_total'] = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->posts}
+                WHERE post_type = 'docs'
+                AND post_status IN ('publish', 'draft', 'private')
+            ");
+            
+            $stats['docs_with_language'] = $wpdb->get_var("
+                SELECT COUNT(DISTINCT p.ID)
+                FROM {$wpdb->posts} p
+                JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+                JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+                WHERE p.post_type = 'docs'
+                AND p.post_status IN ('publish', 'draft', 'private')
+                AND tt.taxonomy = 'language'
+            ");
+            
+            $stats['docs_without_language'] = $stats['docs_total'] - $stats['docs_with_language'];
+            
+            // BetterDocs taxonomies
+            $bd_taxonomies = [
+                'doc_category' => 'categories',
+                'doc_tag' => 'tags'
+            ];
+            
+            foreach ($bd_taxonomies as $taxonomy => $prefix) {
+                if (taxonomy_exists($taxonomy)) {
+                    $total_key = $prefix . '_total';
+                    $with_key = $prefix . '_with_language';
+                    $without_key = $prefix . '_without_language';
+                    
+                    $stats[$total_key] = $wpdb->get_var($wpdb->prepare("
+                        SELECT COUNT(DISTINCT t.term_id)
+                        FROM {$wpdb->terms} t
+                        JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                        WHERE tt.taxonomy = %s
+                    ", $taxonomy));
+                    
+                    $stats[$with_key] = $wpdb->get_var($wpdb->prepare("
+                        SELECT COUNT(DISTINCT t.term_id)
+                        FROM {$wpdb->terms} t
+                        JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                        WHERE tt.taxonomy = %s
+                        AND EXISTS (
+                            SELECT 1 FROM {$wpdb->term_relationships} tr2
+                            JOIN {$wpdb->term_taxonomy} tt2 ON tr2.term_taxonomy_id = tt2.term_taxonomy_id
+                            WHERE tr2.object_id = t.term_id AND tt2.taxonomy = 'term_language'
+                        )
+                    ", $taxonomy));
+                    
+                    $stats[$without_key] = $stats[$total_key] - $stats[$with_key];
+                }
+            }
+            
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Error getting BetterDocs statistics", $e);
+            }
+        }
+        
+        return $stats;
     }
 }
