@@ -2,10 +2,10 @@
 /**
  * UI Renderer Class
  * 
- * Handles UI rendering for the WPML Migration Fixer plugin
+ * Enhanced UI rendering for the WPML Migration Fixer plugin
  * 
  * @package WPML_Migration_Fixer
- * @since 1.0.0
+ * @since 1.1.0
  */
 
 if (!defined('ABSPATH')) {
@@ -23,7 +23,7 @@ class WPML_Fixer_UI_Renderer {
             <!-- Header -->
             <div class="wpml-header">
                 <h1>🔧 <?php _e('WPML to Polylang Migration Fixer', 'wpml-migration-fixer'); ?></h1>
-                <p><?php _e('Fix language assignments for content migrated from WPML to Polylang', 'wpml-migration-fixer'); ?></p>
+                <p><?php _e('Professional migration verification and content language assignment fixes', 'wpml-migration-fixer'); ?></p>
             </div>
             
             <!-- System Status -->
@@ -66,13 +66,22 @@ class WPML_Fixer_UI_Renderer {
                     </div>
                 </div>
                 
-                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                <!-- Enhanced Verification Section -->
+                <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="btn-comprehensive-verify" class="wpml-btn wpml-btn-large" onclick="wpmlFixerAjax.runComprehensiveVerification()">
+                        <?php _e('🔍 Comprehensive Verification', 'wpml-migration-fixer'); ?>
+                    </button>
                     <button id="btn-verify" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.verifyMigration()">
-                        <?php _e('Verify Migration', 'wpml-migration-fixer'); ?>
+                        <?php _e('Basic Verify', 'wpml-migration-fixer'); ?>
                     </button>
                     <button id="btn-test-connection" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.testConnection()">
                         <?php _e('Test Connection', 'wpml-migration-fixer'); ?>
                     </button>
+                </div>
+                
+                <div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; font-size: 14px;">
+                    <strong><?php _e('💡 Tip:', 'wpml-migration-fixer'); ?></strong>
+                    <?php _e('Use "Comprehensive Verification" to get a detailed analysis of your migration. It checks translation groups, language assignments, and data integrity.', 'wpml-migration-fixer'); ?>
                 </div>
                 
                 <div id="verify-results" style="margin-top: 15px;"></div>

@@ -3,7 +3,7 @@
  * Plugin Name: WPML to Polylang Migration Fixer
  * Plugin URI: https://your-website.com/wpml-to-polylang-migration-fixer
  * Description: Comprehensive tool to fix language assignments and translation groups after migrating from WPML to Polylang
- * Version: 1.0.2
+ * Version: 1.1.0
  * Author: Your Name
  * Author URI: https://your-website.com
  * License: GPL v2 or later
@@ -25,7 +25,7 @@ if (defined('WPML_TO_POLYLANG_FIXER_VERSION')) {
 }
 
 // Define plugin constants
-define('WPML_TO_POLYLANG_FIXER_VERSION', '1.0.2');
+define('WPML_TO_POLYLANG_FIXER_VERSION', '1.1.0');
 define('WPML_TO_POLYLANG_FIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WPML_TO_POLYLANG_FIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WPML_TO_POLYLANG_FIXER_PLUGIN_FILE', __FILE__);
@@ -47,6 +47,7 @@ class WPML_To_Polylang_Migration_Fixer {
     private $language_converter = null;
     private $debug_logger = null;
     private $db_helper = null;
+    private $migration_verifier = null;
     private $initialized = false;
     
     public static function get_instance() {
@@ -79,7 +80,8 @@ class WPML_To_Polylang_Migration_Fixer {
         $core_files = [
             'includes/class-debug-logger.php',
             'includes/class-database-helper.php', 
-            'includes/class-language-converter.php'
+            'includes/class-language-converter.php',
+            'includes/class-migration-verifier.php'  // NEW: Enhanced verifier
         ];
         
         foreach ($core_files as $file) {
@@ -121,7 +123,7 @@ class WPML_To_Polylang_Migration_Fixer {
         // Initialize debug logger first
         if (class_exists('WPML_To_Polylang_Fixer_Debug_Logger')) {
             $this->debug_logger = new WPML_To_Polylang_Fixer_Debug_Logger();
-            $this->debug_logger->log('Plugin components initialization started', 'info');
+            $this->debug_logger->log('Plugin components initialization started (v' . WPML_TO_POLYLANG_FIXER_VERSION . ')', 'info');
         }
         
         // Initialize database helper
@@ -137,6 +139,14 @@ class WPML_To_Polylang_Migration_Fixer {
             $this->language_converter = new WPML_To_Polylang_Fixer_Language_Converter();
             if ($this->debug_logger) {
                 $this->debug_logger->log('Language converter initialized', 'info');
+            }
+        }
+        
+        // NEW: Initialize migration verifier
+        if (class_exists('WPML_To_Polylang_Migration_Verifier')) {
+            $this->migration_verifier = new WPML_To_Polylang_Migration_Verifier();
+            if ($this->debug_logger) {
+                $this->debug_logger->log('Migration verifier initialized', 'info');
             }
         }
         
@@ -171,6 +181,7 @@ class WPML_To_Polylang_Migration_Fixer {
                 'debug_logger' => $this->debug_logger ? 'OK' : 'FAIL',
                 'db_helper' => $this->db_helper ? 'OK' : 'FAIL',
                 'language_converter' => $this->language_converter ? 'OK' : 'FAIL',
+                'migration_verifier' => $this->migration_verifier ? 'OK' : 'FAIL',
                 'admin_handler' => $this->admin_handler ? 'OK' : 'N/A',
                 'ajax_handler' => $this->ajax_handler ? 'OK' : 'N/A'
             ];
@@ -246,6 +257,8 @@ class WPML_To_Polylang_Migration_Fixer {
                 return $this->language_converter;
             case 'db_helper':
                 return $this->db_helper;
+            case 'migration_verifier':
+                return $this->migration_verifier;
             case 'admin_handler':
                 return $this->admin_handler;
             case 'ajax_handler':
@@ -261,7 +274,8 @@ class WPML_To_Polylang_Migration_Fixer {
     public function is_ready() {
         return $this->debug_logger !== null && 
                $this->db_helper !== null && 
-               $this->language_converter !== null;
+               $this->language_converter !== null &&
+               $this->migration_verifier !== null;
     }
     
     /**
@@ -272,10 +286,12 @@ class WPML_To_Polylang_Migration_Fixer {
             'initialized' => $this->initialized,
             'ready' => $this->is_ready(),
             'polylang_active' => function_exists('pll_languages_list'),
+            'version' => WPML_TO_POLYLANG_FIXER_VERSION,
             'components' => [
                 'debug_logger' => $this->debug_logger !== null,
                 'db_helper' => $this->db_helper !== null,
                 'language_converter' => $this->language_converter !== null,
+                'migration_verifier' => $this->migration_verifier !== null,
                 'admin_handler' => $this->admin_handler !== null,
                 'ajax_handler' => $this->ajax_handler !== null
             ]

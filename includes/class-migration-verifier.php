@@ -1,0 +1,695 @@
+<?php
+/**
+ * Enhanced Migration Verifier Class
+ * 
+ * Comprehensive verification of WPML to Polylang migration
+ * Based on actual migration process analysis
+ * 
+ * @package WPML_To_Polylang_Migration_Fixer
+ * @since 1.1.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class WPML_To_Polylang_Migration_Verifier {
+    
+    private $wpdb;
+    private $logger;
+    private $icl_table;
+    
+    public function __construct() {
+        global $wpdb;
+        $this->wpdb = $wpdb;
+        $this->icl_table = $wpdb->prefix . 'icl_translations';
+        
+        if (class_exists('WPML_To_Polylang_Fixer_Debug_Logger')) {
+            $this->logger = new WPML_To_Polylang_Fixer_Debug_Logger();
+        }
+    }
+    
+    /**
+     * Comprehensive migration verification
+     */
+    public function verify_migration() {
+        $results = [
+            'overall_status' => 'unknown',
+            'languages' => $this->verify_languages(),
+            'posts' => $this->verify_posts(),
+            'terms' => $this->verify_terms(),
+            'translation_groups' => $this->verify_translation_groups(),
+            'menus' => $this->verify_menus(),
+            'strings' => $this->verify_strings(),
+            'options' => $this->verify_options(),
+            'wpml_data' => $this->check_wpml_data_exists()
+        ];
+        
+        // Calculate overall status
+        $critical_issues = 0;
+        foreach ($results as $key => $result) {
+            if ($key !== 'overall_status' && isset($result['critical_issues'])) {
+                $critical_issues += $result['critical_issues'];
+            }
+        }
+        
+        $results['overall_status'] = $critical_issues === 0 ? 'success' : 'issues_found';
+        $results['total_critical_issues'] = $critical_issues;
+        
+        return $results;
+    }
+    
+    /**
+     * Verify languages migration
+     */
+    private function verify_languages() {
+        $verification = [
+            'status' => 'checking',
+            'issues' => [],
+            'critical_issues' => 0,
+            'wpml_languages' => 0,
+            'pll_languages' => 0,
+            'missing_in_pll' => []
+        ];
+        
+        try {
+            // Check if WPML data exists
+            if (!$this->wpml_tables_exist()) {
+                $verification['status'] = 'no_wpml_data';
+                return $verification;
+            }
+            
+            // Get WPML languages
+            $wpml_languages = $this->wpdb->get_results("
+                SELECT l.code, l.default_locale, lt.name
+                FROM {$this->wpdb->prefix}icl_languages l
+                INNER JOIN {$this->wpdb->prefix}icl_languages_translations lt 
+                    ON l.code = lt.language_code
+                WHERE l.active = 1 AND lt.language_code = lt.display_language_code
+            ");
+            
+            $verification['wpml_languages'] = count($wpml_languages);
+            
+            if (!function_exists('pll_languages_list')) {
+                $verification['issues'][] = 'Polylang not active';
+                $verification['critical_issues']++;
+                return $verification;
+            }
+            
+            $pll_languages = pll_languages_list(['fields' => 'slug']);
+            $verification['pll_languages'] = count($pll_languages);
+            
+            // Check for missing languages
+            foreach ($wpml_languages as $wpml_lang) {
+                if (!in_array($wpml_lang->code, $pll_languages)) {
+                    $verification['missing_in_pll'][] = $wpml_lang->code;
+                    $verification['critical_issues']++;
+                }
+            }
+            
+            $verification['status'] = $verification['critical_issues'] === 0 ? 'success' : 'issues';
+            
+        } catch (Exception $e) {
+            $verification['status'] = 'error';
+            $verification['issues'][] = 'Error checking languages: ' . $e->getMessage();
+            if ($this->logger) {
+                $this->logger->log_error('Language verification failed', $e);
+            }
+        }
+        
+        return $verification;
+    }
+    
+    /**
+     * Verify posts migration
+     */
+    private function verify_posts() {
+        $verification = [
+            'status' => 'checking',
+            'issues' => [],
+            'critical_issues' => 0,
+            'wpml_post_trids' => 0,
+            'pll_post_groups' => 0,
+            'posts_with_language' => 0,
+            'posts_without_language' => 0,
+            'orphaned_wpml_groups' => 0,
+            'corrupted_groups' => 0
+        ];
+        
+        try {
+            if (!$this->wpml_tables_exist()) {
+                $verification['status'] = 'no_wpml_data';
+                return $verification;
+            }
+            
+            // Get WPML post translation groups
+            $wpml_post_trids = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT trid)
+                FROM {$this->icl_table}
+                WHERE element_type LIKE 'post_%'
+                AND trid IN (
+                    SELECT trid FROM {$this->icl_table}
+                    WHERE element_type LIKE 'post_%'
+                    GROUP BY trid HAVING COUNT(*) > 1
+                )
+            ");
+            $verification['wpml_post_trids'] = intval($wpml_post_trids);
+            
+            // Get PLL post translation groups
+            $pll_post_groups = $this->wpdb->get_var("
+                SELECT COUNT(*)
+                FROM {$this->wpdb->term_taxonomy}
+                WHERE taxonomy = 'post_translations'
+            ");
+            $verification['pll_post_groups'] = intval($pll_post_groups);
+            
+            // Check for orphaned WPML groups (not converted to PLL)
+            $orphaned_groups = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT trid)
+                FROM {$this->icl_table}
+                WHERE element_type LIKE 'post_%'
+                AND trid NOT IN (
+                    SELECT CAST(REPLACE(t.slug, 'pll_wpml_', '') AS UNSIGNED)
+                    FROM {$this->wpdb->terms} t
+                    JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                    WHERE tt.taxonomy = 'post_translations'
+                    AND t.slug LIKE 'pll_wpml_%'
+                    AND t.slug REGEXP '^pll_wpml_[0-9]+$'
+                )
+            ");
+            $verification['orphaned_wpml_groups'] = intval($orphaned_groups);
+            
+            if ($verification['orphaned_wpml_groups'] > 0) {
+                $verification['critical_issues'] += $verification['orphaned_wpml_groups'];
+                $verification['issues'][] = "Found {$verification['orphaned_wpml_groups']} WPML post groups not converted to Polylang";
+            }
+            
+            // Check posts with/without language
+            $posts_with_language = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT p.ID)
+                FROM {$this->wpdb->posts} p
+                JOIN {$this->wpdb->term_relationships} tr ON p.ID = tr.object_id
+                JOIN {$this->wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+                WHERE tt.taxonomy = 'language'
+                AND p.post_type IN ('post', 'page', 'product', 'docs', 'betterdocs')
+                AND p.post_status IN ('publish', 'draft', 'private')
+            ");
+            $verification['posts_with_language'] = intval($posts_with_language);
+            
+            $total_posts = $this->wpdb->get_var("
+                SELECT COUNT(*)
+                FROM {$this->wpdb->posts}
+                WHERE post_type IN ('post', 'page', 'product', 'docs', 'betterdocs')
+                AND post_status IN ('publish', 'draft', 'private')
+            ");
+            
+            $verification['posts_without_language'] = intval($total_posts) - $verification['posts_with_language'];
+            
+            if ($verification['posts_without_language'] > 0) {
+                $verification['critical_issues'] += $verification['posts_without_language'];
+                $verification['issues'][] = "Found {$verification['posts_without_language']} posts without language assignment";
+            }
+            
+            // Check for corrupted translation groups (invalid serialized data)
+            $corrupted_groups = $this->wpdb->get_results("
+                SELECT tt.term_id, tt.description
+                FROM {$this->wpdb->term_taxonomy} tt
+                WHERE tt.taxonomy = 'post_translations'
+                AND tt.description != ''
+            ");
+            
+            foreach ($corrupted_groups as $group) {
+                $data = @unserialize($group->description);
+                if ($data === false && $group->description !== 'b:0;') {
+                    $verification['corrupted_groups']++;
+                    $verification['critical_issues']++;
+                }
+            }
+            
+            if ($verification['corrupted_groups'] > 0) {
+                $verification['issues'][] = "Found {$verification['corrupted_groups']} corrupted post translation groups";
+            }
+            
+            $verification['status'] = $verification['critical_issues'] === 0 ? 'success' : 'issues';
+            
+        } catch (Exception $e) {
+            $verification['status'] = 'error';
+            $verification['issues'][] = 'Error checking posts: ' . $e->getMessage();
+            if ($this->logger) {
+                $this->logger->log_error('Post verification failed', $e);
+            }
+        }
+        
+        return $verification;
+    }
+    
+    /**
+     * Verify terms migration (uses term_language taxonomy)
+     */
+    private function verify_terms() {
+        $verification = [
+            'status' => 'checking',
+            'issues' => [],
+            'critical_issues' => 0,
+            'wpml_term_trids' => 0,
+            'pll_term_groups' => 0,
+            'terms_with_language' => 0,
+            'terms_without_language' => 0,
+            'orphaned_wpml_term_groups' => 0,
+            'corrupted_term_groups' => 0
+        ];
+        
+        try {
+            if (!$this->wpml_tables_exist()) {
+                $verification['status'] = 'no_wpml_data';
+                return $verification;
+            }
+            
+            // Get WPML term translation groups
+            $wpml_term_trids = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT trid)
+                FROM {$this->icl_table}
+                WHERE element_type LIKE 'tax_%'
+                AND trid IN (
+                    SELECT trid FROM {$this->icl_table}
+                    WHERE element_type LIKE 'tax_%'
+                    GROUP BY trid HAVING COUNT(*) > 1
+                )
+            ");
+            $verification['wpml_term_trids'] = intval($wpml_term_trids);
+            
+            // Get PLL term translation groups
+            $pll_term_groups = $this->wpdb->get_var("
+                SELECT COUNT(*)
+                FROM {$this->wpdb->term_taxonomy}
+                WHERE taxonomy = 'term_translations'
+            ");
+            $verification['pll_term_groups'] = intval($pll_term_groups);
+            
+            // Check for orphaned WPML term groups
+            $orphaned_term_groups = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT trid)
+                FROM {$this->icl_table}
+                WHERE element_type LIKE 'tax_%'
+                AND trid NOT IN (
+                    SELECT CAST(REPLACE(t.slug, 'pll_wpml_', '') AS UNSIGNED)
+                    FROM {$this->wpdb->terms} t
+                    JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                    WHERE tt.taxonomy = 'term_translations'
+                    AND t.slug LIKE 'pll_wpml_%'
+                    AND t.slug REGEXP '^pll_wpml_[0-9]+$'
+                )
+            ");
+            $verification['orphaned_wpml_term_groups'] = intval($orphaned_term_groups);
+            
+            if ($verification['orphaned_wpml_term_groups'] > 0) {
+                $verification['critical_issues'] += $verification['orphaned_wpml_term_groups'];
+                $verification['issues'][] = "Found {$verification['orphaned_wpml_term_groups']} WPML term groups not converted to Polylang";
+            }
+            
+            // Check terms with/without language (using term_language taxonomy)
+            $terms_with_language = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$this->wpdb->terms} t
+                JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                JOIN {$this->wpdb->term_relationships} tr ON t.term_id = tr.object_id
+                JOIN {$this->wpdb->term_taxonomy} tt2 ON tr.term_taxonomy_id = tt2.term_taxonomy_id
+                WHERE tt.taxonomy IN ('category', 'post_tag', 'product_cat', 'product_tag', 'doc_category')
+                AND tt2.taxonomy = 'term_language'
+            ");
+            $verification['terms_with_language'] = intval($terms_with_language);
+            
+            $total_terms = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$this->wpdb->terms} t
+                JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy IN ('category', 'post_tag', 'product_cat', 'product_tag', 'doc_category')
+            ");
+            
+            $verification['terms_without_language'] = intval($total_terms) - $verification['terms_with_language'];
+            
+            if ($verification['terms_without_language'] > 0) {
+                $verification['critical_issues'] += $verification['terms_without_language'];
+                $verification['issues'][] = "Found {$verification['terms_without_language']} terms without language assignment";
+            }
+            
+            $verification['status'] = $verification['critical_issues'] === 0 ? 'success' : 'issues';
+            
+        } catch (Exception $e) {
+            $verification['status'] = 'error';
+            $verification['issues'][] = 'Error checking terms: ' . $e->getMessage();
+            if ($this->logger) {
+                $this->logger->log_error('Term verification failed', $e);
+            }
+        }
+        
+        return $verification;
+    }
+    
+    /**
+     * Verify translation groups structure
+     */
+    private function verify_translation_groups() {
+        $verification = [
+            'status' => 'checking',
+            'issues' => [],
+            'critical_issues' => 0,
+            'total_groups' => 0,
+            'valid_groups' => 0,
+            'invalid_groups' => 0,
+            'empty_groups' => 0
+        ];
+        
+        try {
+            // Check post translation groups
+            $post_groups = $this->wpdb->get_results("
+                SELECT t.slug, tt.description, tt.count
+                FROM {$this->wpdb->terms} t
+                JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy = 'post_translations'
+                AND t.slug LIKE 'pll_wpml_%'
+            ");
+            
+            foreach ($post_groups as $group) {
+                $verification['total_groups']++;
+                
+                // Verify description is valid serialized data
+                $data = @unserialize($group->description);
+                if ($data === false && $group->description !== 'b:0;') {
+                    $verification['invalid_groups']++;
+                    $verification['critical_issues']++;
+                    continue;
+                }
+                
+                // Check if group has actual translations
+                if (empty($data) || !is_array($data)) {
+                    $verification['empty_groups']++;
+                    continue;
+                }
+                
+                // Verify count matches actual translations
+                if ($group->count != count($data)) {
+                    $verification['invalid_groups']++;
+                    $verification['critical_issues']++;
+                    continue;
+                }
+                
+                $verification['valid_groups']++;
+            }
+            
+            // Check term translation groups
+            $term_groups = $this->wpdb->get_results("
+                SELECT t.slug, tt.description, tt.count
+                FROM {$this->wpdb->terms} t
+                JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy = 'term_translations'
+                AND t.slug LIKE 'pll_wpml_%'
+            ");
+            
+            foreach ($term_groups as $group) {
+                $verification['total_groups']++;
+                
+                $data = @unserialize($group->description);
+                if ($data === false && $group->description !== 'b:0;') {
+                    $verification['invalid_groups']++;
+                    $verification['critical_issues']++;
+                    continue;
+                }
+                
+                if (empty($data) || !is_array($data)) {
+                    $verification['empty_groups']++;
+                    continue;
+                }
+                
+                if ($group->count != count($data)) {
+                    $verification['invalid_groups']++;
+                    $verification['critical_issues']++;
+                    continue;
+                }
+                
+                $verification['valid_groups']++;
+            }
+            
+            if ($verification['invalid_groups'] > 0) {
+                $verification['issues'][] = "Found {$verification['invalid_groups']} corrupted translation groups";
+            }
+            
+            if ($verification['empty_groups'] > 0) {
+                $verification['issues'][] = "Found {$verification['empty_groups']} empty translation groups";
+            }
+            
+            $verification['status'] = $verification['critical_issues'] === 0 ? 'success' : 'issues';
+            
+        } catch (Exception $e) {
+            $verification['status'] = 'error';
+            $verification['issues'][] = 'Error checking translation groups: ' . $e->getMessage();
+            if ($this->logger) {
+                $this->logger->log_error('Translation groups verification failed', $e);
+            }
+        }
+        
+        return $verification;
+    }
+    
+    /**
+     * Verify menu migration
+     */
+    private function verify_menus() {
+        $verification = [
+            'status' => 'checking',
+            'issues' => [],
+            'critical_issues' => 0,
+            'wpml_menu_trids' => 0,
+            'pll_menu_config' => false,
+            'configured_themes' => 0
+        ];
+        
+        try {
+            if (!$this->wpml_tables_exist()) {
+                $verification['status'] = 'no_wpml_data';
+                return $verification;
+            }
+            
+            // Check WPML menu translation groups
+            $wpml_menu_trids = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT trid)
+                FROM {$this->icl_table}
+                WHERE element_type = 'tax_nav_menu'
+                AND trid IN (
+                    SELECT trid FROM {$this->icl_table}
+                    WHERE element_type = 'tax_nav_menu'
+                    GROUP BY trid HAVING COUNT(*) > 1
+                )
+            ");
+            $verification['wpml_menu_trids'] = intval($wpml_menu_trids);
+            
+            // Check Polylang menu configuration
+            $polylang_options = get_option('polylang');
+            if (isset($polylang_options['nav_menus']) && !empty($polylang_options['nav_menus'])) {
+                $verification['pll_menu_config'] = true;
+                $verification['configured_themes'] = count($polylang_options['nav_menus']);
+            }
+            
+            // If WPML had menu translations but PLL doesn't, that's an issue
+            if ($verification['wpml_menu_trids'] > 0 && !$verification['pll_menu_config']) {
+                $verification['critical_issues']++;
+                $verification['issues'][] = "WPML had {$verification['wpml_menu_trids']} menu translation groups but Polylang menu configuration is missing";
+            }
+            
+            $verification['status'] = $verification['critical_issues'] === 0 ? 'success' : 'issues';
+            
+        } catch (Exception $e) {
+            $verification['status'] = 'error';
+            $verification['issues'][] = 'Error checking menus: ' . $e->getMessage();
+            if ($this->logger) {
+                $this->logger->log_error('Menu verification failed', $e);
+            }
+        }
+        
+        return $verification;
+    }
+    
+    /**
+     * Verify string migration
+     */
+    private function verify_strings() {
+        $verification = [
+            'status' => 'checking',
+            'issues' => [],
+            'critical_issues' => 0,
+            'wpml_strings' => 0,
+            'pll_mo_entries' => 0
+        ];
+        
+        try {
+            if (!$this->wpml_tables_exist()) {
+                $verification['status'] = 'no_wpml_data';
+                return $verification;
+            }
+            
+            // Check WPML strings
+            $wpml_strings = $this->wpdb->get_var("
+                SELECT COUNT(*)
+                FROM {$this->wpdb->prefix}icl_strings s
+                INNER JOIN {$this->wpdb->prefix}icl_string_translations st ON st.string_id = s.id
+            ");
+            $verification['wpml_strings'] = intval($wpml_strings);
+            
+            // Check Polylang MO entries (basic check)
+            if (function_exists('pll_languages_list')) {
+                $languages = pll_languages_list(['fields' => 'slug']);
+                $mo_entries = 0;
+                
+                foreach ($languages as $lang) {
+                    if ($lang !== pll_default_language()) {
+                        $mo = new PLL_MO();
+                        $mo->import_from_db($lang);
+                        $mo_entries += count($mo->entries);
+                    }
+                }
+                
+                $verification['pll_mo_entries'] = $mo_entries;
+            }
+            
+            // Basic comparison (not exact as some strings might be filtered)
+            if ($verification['wpml_strings'] > 0 && $verification['pll_mo_entries'] === 0) {
+                $verification['critical_issues']++;
+                $verification['issues'][] = "WPML had {$verification['wpml_strings']} string translations but Polylang MO is empty";
+            }
+            
+            $verification['status'] = $verification['critical_issues'] === 0 ? 'success' : 'needs_review';
+            
+        } catch (Exception $e) {
+            $verification['status'] = 'error';
+            $verification['issues'][] = 'Error checking strings: ' . $e->getMessage();
+            if ($this->logger) {
+                $this->logger->log_error('String verification failed', $e);
+            }
+        }
+        
+        return $verification;
+    }
+    
+    /**
+     * Verify options migration
+     */
+    private function verify_options() {
+        $verification = [
+            'status' => 'checking',
+            'issues' => [],
+            'critical_issues' => 0,
+            'polylang_configured' => false,
+            'default_language_set' => false,
+            'url_structure_set' => false,
+            'post_types_registered' => 0,
+            'taxonomies_registered' => 0
+        ];
+        
+        try {
+            $polylang_options = get_option('polylang');
+            
+            if (!$polylang_options) {
+                $verification['critical_issues']++;
+                $verification['issues'][] = 'Polylang options not found';
+                $verification['status'] = 'issues';
+                return $verification;
+            }
+            
+            $verification['polylang_configured'] = true;
+            
+            // Check default language
+            if (isset($polylang_options['default_lang']) && !empty($polylang_options['default_lang'])) {
+                $verification['default_language_set'] = true;
+            } else {
+                $verification['critical_issues']++;
+                $verification['issues'][] = 'Default language not set in Polylang options';
+            }
+            
+            // Check URL structure
+            if (isset($polylang_options['force_lang'])) {
+                $verification['url_structure_set'] = true;
+            } else {
+                $verification['issues'][] = 'URL structure not configured';
+            }
+            
+            // Check post types
+            if (isset($polylang_options['post_types']) && is_array($polylang_options['post_types'])) {
+                $verification['post_types_registered'] = count($polylang_options['post_types']);
+            }
+            
+            // Check taxonomies
+            if (isset($polylang_options['taxonomies']) && is_array($polylang_options['taxonomies'])) {
+                $verification['taxonomies_registered'] = count($polylang_options['taxonomies']);
+            }
+            
+            $verification['status'] = $verification['critical_issues'] === 0 ? 'success' : 'issues';
+            
+        } catch (Exception $e) {
+            $verification['status'] = 'error';
+            $verification['issues'][] = 'Error checking options: ' . $e->getMessage();
+            if ($this->logger) {
+                $this->logger->log_error('Options verification failed', $e);
+            }
+        }
+        
+        return $verification;
+    }
+    
+    /**
+     * Check if WPML data exists
+     */
+    private function check_wpml_data_exists() {
+        return [
+            'icl_translations_exists' => $this->wpml_tables_exist(),
+            'icl_translations_count' => $this->wpml_tables_exist() ? 
+                intval($this->wpdb->get_var("SELECT COUNT(*) FROM {$this->icl_table}")) : 0
+        ];
+    }
+    
+    /**
+     * Check if WPML tables exist
+     */
+    private function wpml_tables_exist() {
+        return $this->wpdb->get_var("SHOW TABLES LIKE '{$this->icl_table}'") == $this->icl_table;
+    }
+    
+    /**
+     * Get summary for quick overview
+     */
+    public function get_verification_summary() {
+        $results = $this->verify_migration();
+        
+        $summary = [
+            'overall_status' => $results['overall_status'],
+            'total_critical_issues' => $results['total_critical_issues'],
+            'components_checked' => count($results) - 3, // Exclude overall_status, total_critical_issues, wpml_data
+            'components_with_issues' => 0,
+            'quick_stats' => []
+        ];
+        
+        foreach ($results as $component => $data) {
+            if (in_array($component, ['overall_status', 'total_critical_issues', 'wpml_data'])) {
+                continue;
+            }
+            
+            if (isset($data['critical_issues']) && $data['critical_issues'] > 0) {
+                $summary['components_with_issues']++;
+            }
+            
+            // Add quick stats for display
+            switch ($component) {
+                case 'posts':
+                    $summary['quick_stats']['posts_without_language'] = $data['posts_without_language'] ?? 0;
+                    break;
+                case 'terms':
+                    $summary['quick_stats']['terms_without_language'] = $data['terms_without_language'] ?? 0;
+                    break;
+                case 'translation_groups':
+                    $summary['quick_stats']['invalid_groups'] = $data['invalid_groups'] ?? 0;
+                    break;
+            }
+        }
+        
+        return $summary;
+    }
+}
