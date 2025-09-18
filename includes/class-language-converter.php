@@ -194,6 +194,59 @@ class WPML_To_Polylang_Fixer_Language_Converter {
         return pll_default_language();
     }
     
+    public function get_problematic_codes() {
+        global $wpdb;
+        
+        $problematic = [];
+        
+        // Check for pll_ prefixed codes (data corruption)
+        $pll_prefixed = $wpdb->get_col("
+            SELECT DISTINCT t.slug
+            FROM {$wpdb->terms} t
+            JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+            WHERE tt.taxonomy IN ('language', 'term_language')
+            AND t.slug LIKE 'pll_%'
+        ");
+        
+        if (!empty($pll_prefixed)) {
+            $problematic['pll_prefixed'] = $pll_prefixed;
+        }
+        
+        // Find all language codes in use
+        $all_codes = $wpdb->get_col("
+            SELECT DISTINCT t.slug
+            FROM {$wpdb->terms} t
+            JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+            WHERE tt.taxonomy IN ('language', 'term_language')
+        ");
+        
+        // Get configured languages
+        $configured = pll_languages_list(['fields' => 'slug']);
+        
+        // Find unconfigured codes
+        $unconfigured = array_diff($all_codes, $configured);
+        
+        if (!empty($unconfigured)) {
+            $problematic['unconfigured'] = $unconfigured;
+        }
+        
+        // Find English variants that aren't the main configured English
+        $english_variants = [];
+        $main_english = $this->get_main_english_code();
+        
+        foreach ($all_codes as $code) {
+            if (strpos($code, 'en') === 0 && $code !== $main_english && !in_array($code, $configured)) {
+                $english_variants[] = $code;
+            }
+        }
+        
+        if (!empty($english_variants)) {
+            $problematic['english_variants'] = $english_variants;
+        }
+        
+        return $problematic;
+    }
+    
     public function get_main_english_code() {
         $configured_langs = pll_languages_list(['fields' => 'slug']);
         
