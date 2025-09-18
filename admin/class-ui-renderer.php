@@ -71,9 +71,6 @@ class WPML_Fixer_UI_Renderer {
                     <button id="btn-comprehensive-verify" class="wpml-btn wpml-btn-large" onclick="wpmlFixerAjax.runComprehensiveVerification()">
                         <?php _e('🔍 Comprehensive Verification', 'wpml-migration-fixer'); ?>
                     </button>
-                    <button id="btn-verify" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.verifyMigration()">
-                        <?php _e('Basic Verify', 'wpml-migration-fixer'); ?>
-                    </button>
                     <button id="btn-test-connection" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.testConnection()">
                         <?php _e('Test Connection', 'wpml-migration-fixer'); ?>
                     </button>
@@ -87,86 +84,6 @@ class WPML_Fixer_UI_Renderer {
                 <div id="verify-results" style="margin-top: 15px;"></div>
             </div>
             
-            <!-- Content Analysis Accordion -->
-            <div class="accordion" id="analysis-accordion">
-                <div class="accordion-header" onclick="wpmlFixerAjax.toggleAccordion('analysis-accordion')">
-                    <h3>📊 <?php _e('Content Analysis', 'wpml-migration-fixer'); ?></h3>
-                    <span class="accordion-arrow">▼</span>
-                </div>
-                <div class="accordion-content">
-                    <div style="margin-bottom: 15px;">
-                        <button id="btn-analyze" class="wpml-btn" onclick="wpmlFixerAjax.runAnalysis()">
-                            <?php _e('Run Analysis', 'wpml-migration-fixer'); ?>
-                        </button>
-                        <small style="margin-left: 10px; color: #666;">
-                            <?php _e('Analyze your content to check language assignments', 'wpml-migration-fixer'); ?>
-                        </small>
-                    </div>
-                    
-                    <div id="analysis-results">
-                        <p style="color: #666; font-size: 14px;">
-                            <?php _e('Click "Run Analysis" above to check your content for language issues.', 'wpml-migration-fixer'); ?>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Language Diagnosis Accordion -->
-            <div class="accordion" id="diagnosis-accordion">
-                <div class="accordion-header" onclick="wpmlFixerAjax.toggleAccordion('diagnosis-accordion')">
-                    <h3>🔍 <?php _e('Language Diagnosis & Quick Fixes', 'wpml-migration-fixer'); ?></h3>
-                    <span class="accordion-arrow">▼</span>
-                </div>
-                <div class="accordion-content">
-                    <div style="margin-bottom: 15px;">
-                        <button id="btn-diagnose" class="wpml-btn" onclick="wpmlFixerAjax.runDiagnosis()">
-                            <?php _e('Run Language Diagnosis', 'wpml-migration-fixer'); ?>
-                        </button>
-                        <small style="margin-left: 10px; color: #666;">
-                            <?php _e('Identify specific language assignment problems', 'wpml-migration-fixer'); ?>
-                        </small>
-                    </div>
-                    
-                    <div id="diagnosis-results" style="margin-top: 15px;"></div>
-                    
-                    <!-- Emergency Fix Section -->
-                    <div class="fix-section" style="margin-top: 20px; background: #ffebee; border: 2px solid #f44336;">
-                        <h3>🚨 <?php _e('EMERGENCY: Fix pll_ Prefix Issue', 'wpml-migration-fixer'); ?></h3>
-                        <p class="fix-description" style="color: #d32f2f; font-weight: bold;">
-                            <?php _e('CRITICAL: If diagnosis shows "pll_en", "pll_es", etc. codes, your data is corrupted. Use this to fix all wrong pll_ prefixed language codes immediately!', 'wpml-migration-fixer'); ?>
-                        </p>
-                        <button id="btn-fix-pll-prefix" class="wpml-btn" style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);" onclick="wpmlFixerAjax.fixPllPrefix()">
-                            <?php _e('EMERGENCY FIX: Remove pll_ Prefixes', 'wpml-migration-fixer'); ?>
-                        </button>
-                        <div id="progress-pll-prefix" class="progress-wrapper">
-                            <div class="progress-bar">
-                                <div id="progress-bar-pll-prefix" class="progress-fill"></div>
-                                <div id="progress-text-pll-prefix" class="progress-text">0%</div>
-                            </div>
-                        </div>
-                        <div id="pll-prefix-fix-status"></div>
-                    </div>
-                    
-                    <!-- English Variants Fix -->
-                    <div class="fix-section" style="margin-top: 20px; background: #fff3cd;">
-                        <h3>🔧 <?php _e('Fix English Variants', 'wpml-migration-fixer'); ?></h3>
-                        <p class="fix-description">
-                            <?php _e('If content is assigned to wrong English variants (en-gb, en-us, etc.) instead of your configured English, use this to reassign.', 'wpml-migration-fixer'); ?>
-                        </p>
-                        <button id="btn-fix-english" class="wpml-btn wpml-btn-warning" onclick="wpmlFixerAjax.fixEnglishVariants()">
-                            <?php _e('Fix English Variants', 'wpml-migration-fixer'); ?>
-                        </button>
-                        <div id="progress-english-fix" class="progress-wrapper">
-                            <div class="progress-bar">
-                                <div id="progress-bar-english-fix" class="progress-fill"></div>
-                                <div id="progress-text-english-fix" class="progress-text">0%</div>
-                            </div>
-                        </div>
-                        <div id="english-fix-status"></div>
-                    </div>
-                </div>
-            </div>
-            
             <!-- Main Fix Actions Accordion -->
             <div class="accordion" id="fixes-accordion">
                 <div class="accordion-header" onclick="wpmlFixerAjax.toggleAccordion('fixes-accordion')">
@@ -178,6 +95,7 @@ class WPML_Fixer_UI_Renderer {
                         <?php _e('Process content in batches to prevent timeouts. Each section handles different content types.', 'wpml-migration-fixer'); ?>
                     </p>
                     
+
                     <!-- Posts & Pages -->
                     <div class="fix-section">
                         <h3>📝 <?php _e('Posts & Pages', 'wpml-migration-fixer'); ?></h3>
