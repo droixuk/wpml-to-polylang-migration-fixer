@@ -14,8 +14,10 @@ jQuery(document).ready(function($) {
         nonce: '',
         nonceName: '',
         strings: {},
+        page: '',
         processingStates: {}, // Track processing state for each type
-        progressControllers: {} // Cache DOM references for reusable progress UI
+        progressControllers: {}, // Cache DOM references for reusable progress UI
+        sqlModalInitialized: false
     });
     
     // Try to load localization data from multiple sources
@@ -52,8 +54,9 @@ jQuery(document).ready(function($) {
             error: 'An error occurred. Please check the logs.',
             verifying: 'Running comprehensive verification...',
             verifyingHint: 'This may take a few moments. Please keep this tab open.',
-            verifyingButton: 'Processing verification…',
-            verificationComplete: 'Verification complete!'
+            verifyingButton: 'Processing verification...',
+            verificationComplete: 'Verification complete!',
+            noLanguages: 'No Polylang languages detected.'
         };
         window.wpmlFixerAjax.strings = $.extend({}, defaultStrings, window.wpmlFixerAjax.strings || {});
         
@@ -88,6 +91,15 @@ jQuery(document).ready(function($) {
                 self.debugLog('Debug mode ' + (self.debugEnabled ? 'enabled' : 'disabled'));
             });
             
+            var $sqlModal = $('#wmf-sql-modal');
+            if ($sqlModal.length) {
+                self.bindSqlPreflight($sqlModal);
+            }
+
+            if ($('#wmf-status-root').length) {
+                self.renderStatus();
+            }
+
             self.debugLog('WPML Migration Fixer initialized with enhanced progress display');
         },
         
@@ -190,6 +202,443 @@ jQuery(document).ready(function($) {
             }
 
             return this.progressControllers[type];
+        },
+        
+        /**
+         * Basic HTML escaping helper
+         * @param {string} value
+         * @returns {string}
+         */
+        escapeHtml: function(value) {
+            return $('<div/>').text(value == null ? '' : value).html();
+        },
+
+        /**
+         * Format a label/value line for status cards
+         * @param {string} label
+         * @param {string} value
+         * @returns {string}
+         */
+        formatLine: function(label, value) {
+            return '<p><strong>' + this.escapeHtml(label) + ':</strong> ' + this.escapeHtml(value) + '</p>';
+        },
+
+        /**
+         * Format plain text paragraph for status cards
+         * @param {string} text
+         * @returns {string}
+         */
+        formatText: function(text) {
+            return '<p>' + this.escapeHtml(text) + '</p>';
+        },
+
+        /**
+         * Fetch and render Status tab information
+         */
+        renderStatus: function() {
+            var self = this;
+            var $root = $('#wmf-status-root');
+            if (!$root.length) {
+                return;
+            }
+
+            self.renderStatusLoading($root);
+
+            var requestData = self.createRequestData('wmf_get_status');
+            var nonceAttr = $root.data('nonce');
+            if (nonceAttr) {
+                requestData[self.nonceName] = nonceAttr;
+            }
+
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success && response.data) {
+                        self.renderStatusCards($root, response.data);
+                    } else {
+                        var message = response && response.data ? response.data : 'Unable to load status.';
+                        self.renderStatusError($root, message);
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    var message = error || status || 'request failed';
+                    self.renderStatusError($root, 'Status request failed: ' + message);
+                });
+        },
+
+        /**
+         * Render loading UI for status request
+         * @param {jQuery} $root
+         */
+        renderStatusLoading: function($root) {
+            var verifying = this.strings.verifying || 'Loading...';
+            var hint = this.strings.verifyingHint || '';
+            var hintHtml = hint ? '<p class="verification-loading__hint">⚠️ ' + this.escapeHtml(hint) + '</p>' : '';
+            $root.html(
+                '<div class="verification-loading">' +
+                    '<div class="spinner"></div>' +
+                    '<p>' + this.escapeHtml(verifying) + '</p>' +
+                    hintHtml +
+                '</div>'
+            );
+        },
+
+        /**
+         * Render error UI for status request
+         * @param {jQuery} $root
+         * @param {string} message
+         */
+        renderStatusError: function($root, message) {
+            var errorLabel = this.strings.error || 'Error';
+            $root.html(
+                '<div class="status-error-message">' +
+                    '<strong>⚠️ ' + this.escapeHtml(errorLabel) + '</strong>' +
+                    '<p>' + this.escapeHtml(message || 'Unable to load status.') + '</p>' +
+                '</div>'
+            );
+        },
+
+        /**
+         * Render cards for status data
+         * @param {jQuery} $root
+         * @param {Object} data
+         */
+        renderStatusCards: function($root, data) {
+            var self = this;
+            var states = {
+                ok: { cardClass: 'status-card--ok', badgeClass: 'badge-success' },
+                warning: { cardClass: 'status-card--warning', badgeClass: 'badge-warning' },
+                error: { cardClass: 'status-card--error', badgeClass: 'badge-error' },
+                info: { cardClass: 'status-card--info', badgeClass: 'badge-info' }
+            };
+
+            function buildCard(title, state, badgeText, bodyHtml) {
+                var style = states[state] || states.info;
+                return '<div class="status-card ' + style.cardClass + '">' +
+                    '<div class="status-card__header">' +
+                        '<span class="status-card__title">' + self.escapeHtml(title) + '</span>' +
+                        '<span class="badge ' + style.badgeClass + '">' + self.escapeHtml(badgeText) + '</span>' +
+                    '</div>' +
+                    '<div class="status-card__body">' + bodyHtml + '</div>' +
+                '</div>';
+            }
+
+            function pluralize(count, singular, plural) {
+                return count + ' ' + (count === 1 ? singular : plural);
+            }
+
+            var languages = data.languages || {};
+            var languageList = Array.isArray(languages.list) ? languages.list : [];
+            var defaultLanguage = languages.default || '';
+            var hasLanguages = languageList.length > 0;
+
+            var cards = [];
+
+            // Polylang status
+            var pllState = data.pll_active ? 'ok' : 'error';
+            var pllBody = data.pll_active
+                ? self.formatText('Polylang detected and ready.')
+                : self.formatText('Polylang is not active. Install and activate Polylang to use the fixer.');
+            cards.push(buildCard('Polylang', pllState, data.pll_active ? 'Active' : 'Missing', pllBody));
+
+            // WPML tables
+            var wpmlState = data.wpml_tables ? 'warning' : 'ok';
+            var wpmlBadge = data.wpml_tables ? 'Detected' : 'Clean';
+            var wpmlBody = data.wpml_tables
+                ? self.formatText('Legacy WPML tables found. Keep them for reference or remove after migration.')
+                : self.formatText('No WPML tables detected.');
+            cards.push(buildCard('WPML Data', wpmlState, wpmlBadge, wpmlBody));
+
+            // WooCommerce
+            var wooActive = data.woo && data.woo.active;
+            var wooVersion = data.woo && data.woo.version ? data.woo.version : 'N/A';
+            var wooBody = self.formatLine('Status', wooActive ? 'Active' : 'Not detected') +
+                self.formatLine('Version', wooVersion) +
+                self.formatText(wooActive ? 'WooCommerce integration detected.' : 'WooCommerce is optional.');
+            cards.push(buildCard('WooCommerce', wooActive ? 'ok' : 'info', wooActive ? 'Active' : 'Optional', wooBody));
+
+            // BetterDocs
+            var betterdocsActive = data.betterdocs && data.betterdocs.active;
+            var betterdocsVersion = data.betterdocs && data.betterdocs.version ? data.betterdocs.version : 'N/A';
+            var betterdocsBody = self.formatLine('Status', betterdocsActive ? 'Active' : 'Not detected') +
+                self.formatLine('Version', betterdocsVersion) +
+                self.formatText(betterdocsActive ? 'BetterDocs content will be included in fixes.' : 'BetterDocs not detected.');
+            cards.push(buildCard('BetterDocs', betterdocsActive ? 'ok' : 'info', betterdocsActive ? 'Active' : 'Optional', betterdocsBody));
+
+            // ACF
+            var acfActive = data.acf && data.acf.active;
+            var acfVersion = data.acf && data.acf.version ? data.acf.version : 'N/A';
+            var acfBody = self.formatLine('Status', acfActive ? 'Active' : 'Not detected') +
+                self.formatLine('Version', acfVersion) +
+                self.formatText(acfActive ? 'Advanced Custom Fields detected.' : 'ACF not detected.');
+            cards.push(buildCard('ACF', acfActive ? 'ok' : 'info', acfActive ? 'Active' : 'Optional', acfBody));
+
+            // Languages
+            var languagesState = hasLanguages ? 'ok' : (data.pll_active ? 'warning' : 'info');
+            var languagesBadge = hasLanguages ? pluralize(languageList.length, 'Language', 'Languages') : 'None';
+            var languagesLines = self.formatLine('Default', defaultLanguage || 'N/A') +
+                self.formatText(hasLanguages ? languageList.join(', ') : (self.strings.noLanguages || 'No Polylang languages detected.'));
+            cards.push(buildCard('Languages', languagesState, languagesBadge, languagesLines));
+
+            var statusHtml = '<div class="status-grid">' + cards.join('') + '</div>';
+            $root.html(statusHtml);
+        },
+
+        /**
+         * Bind SQL preflight modal events
+         */
+        bindSqlPreflight: function($modal) {
+            if (this.sqlModalInitialized) {
+                return;
+            }
+
+            var self = this;
+            var $openButton = $('#wmf-open-sql');
+            if (!$openButton.length) {
+                return;
+            }
+
+            this.sqlModalInitialized = true;
+
+            $openButton.on('click', function(e) {
+                e.preventDefault();
+                self.openSqlModal();
+            });
+
+            $modal.find('[data-action="close-sql"]').on('click', function(e) {
+                e.preventDefault();
+                self.closeSqlModal();
+            });
+
+            $(document).on('keydown.wmfSql', function(evt) {
+                if (evt.key === 'Escape' && $modal.hasClass('is-open')) {
+                    self.closeSqlModal();
+                }
+            });
+
+            $modal.find('[data-action="preview-sql"]').on('click', function(e) {
+                e.preventDefault();
+                self.previewSql();
+            });
+
+            $modal.find('[data-action="execute-sql"]').on('click', function(e) {
+                e.preventDefault();
+                if (!confirm('Run the SQL statements now? This cannot be undone.')) {
+                    return;
+                }
+                self.executeSql();
+            });
+
+            $modal.find('[data-action="copy-sql"]').on('click', function(e) {
+                e.preventDefault();
+                self.copySql();
+            });
+        },
+
+        openSqlModal: function() {
+            $('#wmf-sql-modal').addClass('is-open').attr('aria-hidden', 'false');
+            $('body').addClass('wmf-modal-open');
+            $('#wmf-sql-input').focus();
+        },
+
+        closeSqlModal: function() {
+            $('#wmf-sql-modal').removeClass('is-open').attr('aria-hidden', 'true');
+            $('body').removeClass('wmf-modal-open');
+            $('#wmf-sql-output').empty();
+        },
+
+        previewSql: function() {
+            var self = this;
+            var $modal = $('#wmf-sql-modal');
+            var sql = $('#wmf-sql-input').val();
+
+            if (!sql || !sql.trim()) {
+                self.setSqlOutput('<p class="status-error-message">' + self.escapeHtml('Enter SQL to preview.') + '</p>');
+                return;
+            }
+
+            self.setSqlOutput(self.renderStatusLoadingHtml());
+
+            var requestData = self.createRequestData('wmf_sql_preview', { sql: sql });
+            var rootNonce = $('#wmf-status-root').data('nonce');
+            if (rootNonce) {
+                requestData[self.nonceName] = rootNonce;
+            }
+
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success) {
+                        self.renderSqlPreviewResult(response.data || {});
+                    } else {
+                        var message = response && response.data ? response.data : 'Preview failed.';
+                        self.setSqlOutput('<div class="status-error-message"><strong>⚠️</strong> ' + self.escapeHtml(message) + '</div>');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    var message = error || status || 'Request failed.';
+                    self.setSqlOutput('<div class="status-error-message"><strong>⚠️</strong> ' + self.escapeHtml(message) + '</div>');
+                });
+        },
+
+        executeSql: function() {
+            var self = this;
+            var sql = $('#wmf-sql-input').val();
+
+            if (!sql || !sql.trim()) {
+                self.setSqlOutput('<p class="status-error-message">' + self.escapeHtml('Enter SQL to execute.') + '</p>');
+                return;
+            }
+
+            self.setSqlOutput(self.renderStatusLoadingHtml());
+
+            var requestData = self.createRequestData('wmf_sql_execute', {
+                sql: sql,
+                confirm: 1
+            });
+            var rootNonce = $('#wmf-status-root').data('nonce');
+            if (rootNonce) {
+                requestData[self.nonceName] = rootNonce;
+            }
+
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success) {
+                        self.renderSqlExecuteResult(response.data || {});
+                        self.showTemporaryMessage('SQL executed successfully.', 'success');
+                    } else {
+                        var message = response && response.data ? response.data : 'Execution failed.';
+                        self.setSqlOutput('<div class="status-error-message"><strong>⚠️</strong> ' + self.escapeHtml(message) + '</div>');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    var message = error || status || 'Request failed.';
+                    self.setSqlOutput('<div class="status-error-message"><strong>⚠️</strong> ' + self.escapeHtml(message) + '</div>');
+                });
+        },
+
+        copySql: function() {
+            var sql = $('#wmf-sql-input').val();
+            if (!sql) {
+                return;
+            }
+
+            var self = this;
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(sql).then(function() {
+                    self.showTemporaryMessage('SQL copied to clipboard.', 'success');
+                }).catch(function() {
+                    self.fallbackCopySql(sql);
+                });
+            } else {
+                self.fallbackCopySql(sql);
+            }
+        },
+
+        fallbackCopySql: function(sql) {
+            var temp = $('<textarea readonly></textarea>').css({ position: 'absolute', left: '-9999px' }).val(sql);
+            $('body').append(temp);
+            temp[0].select();
+            document.execCommand('copy');
+            temp.remove();
+            this.showTemporaryMessage('SQL copied to clipboard.', 'success');
+        },
+
+        renderStatusLoadingHtml: function() {
+            return '<div class="verification-loading" style="margin:0;"><div class="spinner"></div><p>' + this.escapeHtml(this.strings.processing || 'Processing...') + '</p></div>';
+        },
+
+        setSqlOutput: function(html) {
+            $('#wmf-sql-output').html(html || '');
+        },
+
+        renderSqlPreviewResult: function(data) {
+            var self = this;
+            if (!data || !Array.isArray(data.results) || !data.results.length) {
+                self.setSqlOutput('<p>' + self.escapeHtml('No preview data available.') + '</p>');
+                return;
+            }
+
+            var html = '';
+            data.results.forEach(function(entry, index) {
+                html += '<div class="wmf-sql-result">';
+                html += '<h3>Statement ' + (index + 1) + '</h3>';
+                html += '<pre class="wmf-sql-snippet">' + self.escapeHtml(entry.statement || '') + '</pre>';
+
+                if (entry.type === 'select' && Array.isArray(entry.rows)) {
+                    html += self.renderSqlResultTable(entry.rows);
+                    html += '<p class="wmf-sql-meta">' + self.escapeHtml('Rows returned: ' + (entry.row_count || 0)) + '</p>';
+                    if (entry.applied_statement) {
+                        html += '<p class="wmf-sql-meta">' + self.escapeHtml('Preview limited statement:') + '</p>';
+                        html += '<pre class="wmf-sql-snippet">' + self.escapeHtml(entry.applied_statement) + '</pre>';
+                    }
+                } else {
+                    html += '<p class="wmf-sql-meta">' + self.escapeHtml(entry.message || 'Statement skipped during preview.') + '</p>';
+                }
+
+                html += '</div>';
+            });
+
+            self.setSqlOutput(html);
+        },
+
+        renderSqlExecuteResult: function(data) {
+            var self = this;
+            if (!data || !Array.isArray(data.results) || !data.results.length) {
+                self.setSqlOutput('<p>' + self.escapeHtml('Execution completed, but no details were returned.') + '</p>');
+                return;
+            }
+
+            var html = '';
+            data.results.forEach(function(entry, index) {
+                html += '<div class="wmf-sql-result">';
+                html += '<h3>Statement ' + (index + 1) + '</h3>';
+                html += '<pre class="wmf-sql-snippet">' + self.escapeHtml(entry.statement || '') + '</pre>';
+
+                if (entry.type === 'select' && Array.isArray(entry.rows)) {
+                    html += self.renderSqlResultTable(entry.rows);
+                    html += '<p class="wmf-sql-meta">' + self.escapeHtml('Rows returned: ' + (entry.row_count || 0)) + '</p>';
+                } else {
+                    var affected = typeof entry.affected_rows === 'number' ? entry.affected_rows : 0;
+                    html += '<p class="wmf-sql-meta">' + self.escapeHtml('Rows affected: ' + affected) + '</p>';
+                }
+
+                html += '</div>';
+            });
+
+            if (typeof data.total_affected === 'number') {
+                html += '<p class="wmf-sql-meta"><strong>' + self.escapeHtml('Total affected rows: ' + data.total_affected) + '</strong></p>';
+            }
+
+            self.setSqlOutput(html);
+        },
+
+        renderSqlResultTable: function(rows) {
+            if (!rows || !rows.length) {
+                return '<p class="wmf-sql-meta">' + this.escapeHtml('No rows returned.') + '</p>';
+            }
+
+            var self = this;
+            var headers = Object.keys(rows[0]);
+            var html = '<table class="wmf-sql-table"><thead><tr>';
+            headers.forEach(function(header) {
+                html += '<th>' + self.escapeHtml(header) + '</th>';
+            });
+            html += '</tr></thead><tbody>';
+
+            rows.forEach(function(row) {
+                html += '<tr>';
+                headers.forEach(function(header) {
+                    var value = row[header];
+                    if (value === null || typeof value === 'undefined') {
+                        value = 'NULL';
+                    }
+                    html += '<td>' + self.escapeHtml(String(value)) + '</td>';
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+            return html;
         },
         
         /**

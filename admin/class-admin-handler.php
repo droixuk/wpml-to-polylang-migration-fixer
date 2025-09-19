@@ -36,6 +36,7 @@ class WPML_Fixer_Admin_Handler {
      * Admin page hook suffix
      */
     private $page_hook;
+    private $status_page_hook;
     
     /**
      * Nonce action name
@@ -87,14 +88,17 @@ class WPML_Fixer_Admin_Handler {
      * Check plugin requirements
      */
     public function check_requirements() {
-        $is_our_page = isset($_GET['page']) && strpos($_GET['page'], 'wpml-fixer') === 0;
+        $current_page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
+        $is_our_page = $current_page && strpos($current_page, 'wpml-fixer') === 0;
         
         if (!$is_our_page) {
             return true;
         }
         
-        // Check Polylang
-        if (!function_exists('pll_languages_list')) {
+        $is_status_page = ($current_page === 'wpml-fixer-status');
+
+        // Check Polylang for pages that require it
+        if (!$is_status_page && !function_exists('pll_languages_list')) {
             add_action('admin_notices', [$this, 'polylang_missing_notice']);
             return false;
         }
@@ -112,6 +116,15 @@ class WPML_Fixer_Admin_Handler {
      * Add admin menu
      */
     public function add_admin_menu() {
+        $this->status_page_hook = add_submenu_page(
+            'tools.php',
+            __('WPML Fixer Status', 'wpml-migration-fixer'),
+            __('WPML Fixer Status', 'wpml-migration-fixer'),
+            'manage_options',
+            'wpml-fixer-status',
+            [$this, 'render_status_page']
+        );
+
         $this->page_hook = add_submenu_page(
             'tools.php',
             __('WPML Fixer', 'wpml-migration-fixer'),
@@ -127,6 +140,8 @@ class WPML_Fixer_Admin_Handler {
         // Enqueue scripts for our page only
         add_action('admin_print_scripts-' . $this->page_hook, [$this, 'enqueue_scripts']);
         add_action('admin_print_styles-' . $this->page_hook, [$this, 'enqueue_styles']);
+        add_action('admin_print_scripts-' . $this->status_page_hook, [$this, 'enqueue_scripts']);
+        add_action('admin_print_styles-' . $this->status_page_hook, [$this, 'enqueue_styles']);
     }
     
     /**
@@ -136,7 +151,7 @@ class WPML_Fixer_Admin_Handler {
         if (!current_user_can('manage_options')) {
             wp_die(__('You do not have sufficient permissions to access this page.', 'wpml-migration-fixer'));
         }
-        
+
         // Get system status
         $system_status = $this->get_system_status();
         
@@ -190,6 +205,23 @@ class WPML_Fixer_Admin_Handler {
         
         return $status;
     }
+
+    /**
+     * Render status page
+     */
+    public function render_status_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have sufficient permissions to access this page.', 'wpml-migration-fixer'));
+        }
+
+        $nonce = wp_create_nonce($this->nonce_action);
+
+        if ($this->ui_renderer && method_exists($this->ui_renderer, 'render_status_page')) {
+            $this->ui_renderer->render_status_page($nonce);
+        } else {
+            echo '<div class="error"><p>' . esc_html__('Status view not available.', 'wpml-migration-fixer') . '</p></div>';
+        }
+    }
     
     /**
      * Enqueue scripts - FIXED: Clean conflict-proof version
@@ -207,18 +239,26 @@ class WPML_Fixer_Admin_Handler {
             true
         );
         
+        $current_page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
+
         // Create clean data array
         $script_data = [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce($this->nonce_action),
             'nonceName' => $this->nonce_action,
             'debug' => get_option('wpml_to_polylang_fixer_debug_enabled', false),
+            'page' => $current_page,
             'strings' => [
                 'confirmReset' => __('Are you sure you want to reset the session?', 'wpml-migration-fixer'),
                 'confirmFix' => __('This will process all items. Continue?', 'wpml-migration-fixer'),
                 'processing' => __('Processing...', 'wpml-migration-fixer'),
                 'complete' => __('Complete!', 'wpml-migration-fixer'),
-                'error' => __('An error occurred. Please check the logs.', 'wpml-migration-fixer')
+                'error' => __('An error occurred. Please check the logs.', 'wpml-migration-fixer'),
+                'verifying' => __('Running comprehensive verification...', 'wpml-migration-fixer'),
+                'verifyingHint' => __('This may take a few moments. Please keep this tab open.', 'wpml-migration-fixer'),
+                'verifyingButton' => __('Processing verification...', 'wpml-migration-fixer'),
+                'verificationComplete' => __('Verification complete!', 'wpml-migration-fixer'),
+                'noLanguages' => __('No Polylang languages detected.', 'wpml-migration-fixer')
             ]
         ];
         

@@ -217,6 +217,234 @@
     100% { opacity: 0.75; }
 }
 
+.wpml-fixer-status-page {
+    max-width: 1000px;
+}
+
+.wmf-status-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin: 20px 0;
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+    margin-top: 25px;
+}
+
+.status-card {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    border-left: 4px solid #e0e0e0;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.status-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+}
+
+.status-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+}
+
+.status-card__title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a1f36;
+}
+
+.status-card__body p {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    color: #4a5568;
+}
+
+.status-card__body p:last-child {
+    margin-bottom: 0;
+}
+
+.status-card--ok {
+    border-left-color: #4caf50;
+}
+
+.status-card--warning {
+    border-left-color: #ff9800;
+}
+
+.status-card--error {
+    border-left-color: #f44336;
+}
+
+.status-card--info {
+    border-left-color: #2196f3;
+}
+
+.status-error-message {
+    background: #ffebee;
+    border: 1px solid #ffcdd2;
+    padding: 20px;
+    border-radius: 8px;
+    color: #c62828;
+    font-size: 14px;
+}
+
+.wmf-sql-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.wmf-sql-modal.is-open {
+    display: flex;
+}
+
+.wmf-sql-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+}
+
+.wmf-sql-modal__dialog {
+    position: relative;
+    width: min(900px, 90vw);
+    max-height: 90vh;
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 20px 40px rgba(15,23,42,0.25);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    z-index: 1;
+}
+
+.wmf-sql-modal__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.wmf-sql-modal__close {
+    border: none;
+    background: transparent;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    color: #607d8b;
+}
+
+.wmf-sql-modal__close:hover {
+    color: #455a64;
+}
+
+.wmf-sql-modal__intro {
+    margin: 0 0 12px 0;
+    color: #4a5568;
+    font-size: 14px;
+}
+
+.wmf-sql-modal__textarea {
+    width: 100%;
+    min-height: 140px;
+    font-family: Menlo, Consolas, monospace;
+    font-size: 13px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    padding: 12px;
+    resize: vertical;
+    margin-bottom: 16px;
+}
+
+.wmf-sql-modal__footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.wmf-sql-output {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    background: #f8fafc;
+    overflow: auto;
+    max-height: 45vh;
+}
+
+.wmf-sql-output:empty::before {
+    content: attr(data-placeholder);
+    color: #94a3b8;
+    font-size: 13px;
+}
+
+.wmf-sql-result {
+    margin-bottom: 20px;
+}
+
+.wmf-sql-result:last-child {
+    margin-bottom: 0;
+}
+
+.wmf-sql-snippet {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    overflow-x: auto;
+    margin-bottom: 10px;
+}
+
+.wmf-sql-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+}
+
+.wmf-sql-table th,
+.wmf-sql-table td {
+    border: 1px solid #dce3f0;
+    padding: 6px 8px;
+    font-size: 12px;
+    text-align: left;
+}
+
+.wmf-sql-table th {
+    background: #f1f5f9;
+    font-weight: 600;
+}
+
+.wmf-sql-meta {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.wpml-btn-danger {
+    background: linear-gradient(135deg, #ff6b6b 0%, #e53935 100%);
+    color: #fff;
+}
+
+.wpml-btn-danger:hover {
+    background: linear-gradient(135deg, #ff5252 0%, #d32f2f 100%);
+    color: #fff;
+}
+
+body.wmf-modal-open {
+    overflow: hidden;
+}
+
 /* Enhanced status message styles */
 .status-message {
     margin-top: 15px;

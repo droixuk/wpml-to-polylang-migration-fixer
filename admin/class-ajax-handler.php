@@ -36,6 +36,11 @@ class WPML_Fixer_Ajax_Handler {
      * Logger instance
      */
     private $logger;
+
+    /**
+     * SQL runner helper
+     */
+    private $sql_runner;
     
     /**
      * Nonce action name
@@ -58,7 +63,7 @@ class WPML_Fixer_Ajax_Handler {
         if (class_exists('WPML_To_Polylang_Fixer_Debug_Logger')) {
             $this->logger = new WPML_To_Polylang_Fixer_Debug_Logger();
         }
-        
+
         // Load the new verifier
         $verifier_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'includes/class-migration-verifier.php';
         if (file_exists($verifier_file)) {
@@ -68,7 +73,11 @@ class WPML_Fixer_Ajax_Handler {
         if (class_exists('WPML_To_Polylang_Migration_Verifier')) {
             $this->migration_verifier = new WPML_To_Polylang_Migration_Verifier();
         }
-        
+
+        if (class_exists('WMF_SQL_Runner')) {
+            $this->sql_runner = new WMF_SQL_Runner($this->logger);
+        }
+
         $this->init_hooks();
     }
     
@@ -82,17 +91,20 @@ class WPML_Fixer_Ajax_Handler {
         
         // NEW: Comprehensive verification endpoint
         add_action('wp_ajax_wpml_fixer_ajax_comprehensive_verify', [$this, 'handle_comprehensive_verify']);
+        add_action('wp_ajax_wmf_get_status', [$this, 'handle_get_status']);
+        add_action('wp_ajax_wmf_sql_preview', [$this, 'handle_sql_preview']);
+        add_action('wp_ajax_wmf_sql_execute', [$this, 'handle_sql_execute']);
         
         // Log successful initialization
         if ($this->logger) {
-            $this->logger->log('Enhanced AJAX handlers with taxonomy and translation group fixes registered successfully', 'info');
+            $this->logger->log('Enhanced AJAX handlers registered (process/test/status/sql).', 'info');
         }
     }
     
     /**
      * Verify AJAX request
      */
-    private function verify_request() {
+    private function verify_request($require_polylang = true) {
         // Check nonce
         if (!check_ajax_referer($this->nonce_action, $this->nonce_action, false)) {
             if ($this->logger) {
@@ -111,8 +123,8 @@ class WPML_Fixer_Ajax_Handler {
             exit;
         }
         
-        // Check Polylang
-        if (!function_exists('pll_languages_list')) {
+        // Check Polylang if required
+        if ($require_polylang && !function_exists('pll_languages_list')) {
             wp_send_json_error('Polylang is not active');
             exit;
         }
@@ -1481,7 +1493,7 @@ class WPML_Fixer_Ajax_Handler {
      * NEW: Handle comprehensive verification request with timeout prevention
      */
     public function handle_comprehensive_verify() {
-        $this->verify_request();
+        $this->verify_request(true);
         
         try {
             if (!$this->migration_verifier) {
@@ -1633,7 +1645,7 @@ class WPML_Fixer_Ajax_Handler {
      * Handle test connection request (enhanced)
      */
     public function handle_test_connection() {
-        $this->verify_request();
+        $this->verify_request(true);
         
         try {
             $test_data = sanitize_text_field($_POST['test_data'] ?? '');
@@ -1667,6 +1679,101 @@ class WPML_Fixer_Ajax_Handler {
             wp_send_json_error('Connection test failed: ' . $e->getMessage());
         }
     }
+    /**
+     * Handle status request for the Status tab.
+     */
+    public function handle_get_status() {
+        $this->verify_request(false);
+
+        $helper = $this->db_helper;
+
+        $pll_active = $helper ? $helper->has_polylang() : (function_exists('pll_languages_list') && function_exists('pll_default_language'));
+        $wpml_tables = $helper ? $helper->has_wpml_tables() : false;
+        $woo_active = $helper ? $helper->has_woocommerce() : (class_exists('WooCommerce') || defined('WC_VERSION'));
+        $betterdocs_active = $helper ? $helper->has_betterdocs() : (class_exists('BetterDocs') || post_type_exists('docs') || defined('BETTERDOCS_VERSION'));
+        $acf_active = $helper ? $helper->has_acf() : (class_exists('ACF') || function_exists('acf') || defined('ACF_VERSION'));
+
+        $response = [
+            'pll_active' => (bool) $pll_active,
+            'wpml_tables' => (bool) $wpml_tables,
+            'woo' => [
+                'active' => (bool) $woo_active,
+                'version' => defined('WC_VERSION') ? WC_VERSION : ''
+            ],
+            'betterdocs' => [
+                'active' => (bool) $betterdocs_active,
+                'version' => defined('BETTERDOCS_VERSION') ? BETTERDOCS_VERSION : ''
+            ],
+            'acf' => [
+                'active' => (bool) $acf_active,
+                'version' => defined('ACF_VERSION') ? ACF_VERSION : ''
+            ],
+            'languages' => $helper ? $helper->get_pll_languages() : [
+                'list' => [],
+                'default' => null
+            ]
+        ];
+
+        wp_send_json_success($response);
+    }
+
+    /**
+     * Preview SQL statements safely (read-only).
+     */
+    public function handle_sql_preview() {
+        $this->verify_request(false);
+
+        if (!$this->sql_runner) {
+            wp_send_json_error(__('SQL runner is not available.', 'wpml-migration-fixer'));
+        }
+
+        $sql = isset($_POST['sql']) ? wp_unslash($_POST['sql']) : '';
+        if (!is_string($sql) || trim($sql) === '') {
+            wp_send_json_error(__('Please provide an SQL statement.', 'wpml-migration-fixer'));
+        }
+
+        try {
+            $result = $this->sql_runner->preview($sql);
+            wp_send_json_success($result);
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error('SQL preview failed', $e);
+            }
+            wp_send_json_error($e->getMessage());
+        }
+    }
+
+    /**
+     * Execute SQL statements after administrator confirmation.
+     */
+    public function handle_sql_execute() {
+        $this->verify_request(false);
+
+        if (!$this->sql_runner) {
+            wp_send_json_error(__('SQL runner is not available.', 'wpml-migration-fixer'));
+        }
+
+        $sql = isset($_POST['sql']) ? wp_unslash($_POST['sql']) : '';
+        if (!is_string($sql) || trim($sql) === '') {
+            wp_send_json_error(__('Please provide an SQL statement.', 'wpml-migration-fixer'));
+        }
+
+        $confirmed = !empty($_POST['confirm']);
+        if (!$confirmed) {
+            wp_send_json_error(__('Execution must be confirmed.', 'wpml-migration-fixer'));
+        }
+
+        try {
+            $result = $this->sql_runner->execute($sql);
+            wp_send_json_success($result);
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error('SQL execute failed', $e);
+            }
+            wp_send_json_error($e->getMessage());
+        }
+    }
+
 }
 
 } // End of class_exists check

@@ -81,7 +81,8 @@ class WPML_To_Polylang_Migration_Fixer {
             'includes/class-debug-logger.php',
             'includes/class-database-helper.php', 
             'includes/class-language-converter.php',
-            'includes/class-migration-verifier.php'  // NEW: Enhanced verifier
+            'includes/class-migration-verifier.php',
+            'includes/class-sql-runner.php'
         ];
         
         foreach ($core_files as $file) {
@@ -151,14 +152,15 @@ class WPML_To_Polylang_Migration_Fixer {
         }
         
         // Check Polylang availability
-        if (!function_exists('pll_languages_list')) {
+        $polylang_available = function_exists('pll_languages_list');
+
+        if (!$polylang_available) {
             add_action('admin_notices', [$this, 'polylang_missing_notice']);
             if ($this->debug_logger) {
                 $this->debug_logger->log('Polylang not available', 'warning');
             }
-            return;
         }
-        
+
         // Initialize admin components only if in admin
         if (is_admin()) {
             if (class_exists('WPML_Fixer_Admin_Handler')) {

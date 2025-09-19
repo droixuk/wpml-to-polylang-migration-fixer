@@ -200,4 +200,18 @@ class WPML_Fixer_UI_Renderer {
         </div>
         <?php
     }
+
+    /**
+     * Render status overview page
+     */
+    public function render_status_page($nonce) {
+        $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/status.php';
+        $status_nonce = $nonce;
+
+        if (file_exists($view_file)) {
+            include $view_file;
+        } else {
+            echo '<div class="wrap"><div class="error"><p>' . esc_html__('Status view is not available.', 'wpml-migration-fixer') . '</p></div></div>';
+        }
+    }
 }

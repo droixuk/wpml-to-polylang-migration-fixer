@@ -485,4 +485,61 @@ class WPML_To_Polylang_Fixer_Database_Helper {
         
         return $stats;
     }
+
+    /**
+     * Check if Polylang is active.
+     */
+    public function has_polylang(): bool {
+        return function_exists('pll_languages_list');
+    }
+
+    /**
+     * Check if WPML database tables exist.
+     */
+    public function has_wpml_tables(): bool {
+        global $wpdb;
+
+        $table_like = $wpdb->esc_like($wpdb->prefix . 'icl_translations');
+        $result = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_like));
+
+        return !empty($result);
+    }
+
+    /**
+     * Check if WooCommerce is active.
+     */
+    public function has_woocommerce(): bool {
+        return class_exists('WooCommerce') || function_exists('wc') || post_type_exists('product');
+    }
+
+    /**
+     * Check if BetterDocs is active.
+     */
+    public function has_betterdocs(): bool {
+        return post_type_exists('docs') || taxonomy_exists('knowledge_base');
+    }
+
+    /**
+     * Check if Advanced Custom Fields is active.
+     */
+    public function has_acf(): bool {
+        return function_exists('acf_get_field_groups') || post_type_exists('acf-field-group') || post_type_exists('acf-field');
+    }
+
+    /**
+     * Get Polylang languages list and default language slug.
+     */
+    public function get_pll_languages(): array {
+        $languages = [
+            'list' => [],
+            'default' => null
+        ];
+
+        if ($this->has_polylang()) {
+            $languages['list'] = pll_languages_list(['fields' => 'slug']);
+            $languages['default'] = pll_default_language();
+        }
+
+        return $languages;
+    }
 }
