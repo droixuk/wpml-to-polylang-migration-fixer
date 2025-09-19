@@ -88,12 +88,20 @@ class WPML_Fixer_Ajax_Handler {
         // Register AJAX handlers
         add_action('wp_ajax_wpml_fixer_ajax_process', [$this, 'handle_process']);
         add_action('wp_ajax_wpml_fixer_ajax_test_connection', [$this, 'handle_test_connection']);
-        
+
         // NEW: Comprehensive verification endpoint
         add_action('wp_ajax_wpml_fixer_ajax_comprehensive_verify', [$this, 'handle_comprehensive_verify']);
         add_action('wp_ajax_wmf_get_status', [$this, 'handle_get_status']);
         add_action('wp_ajax_wmf_sql_preview', [$this, 'handle_sql_preview']);
         add_action('wp_ajax_wmf_sql_execute', [$this, 'handle_sql_execute']);
+
+        // Enhanced fix operations
+        add_action('wp_ajax_wmf_ensure_buckets', [$this, 'handle_ensure_buckets']);
+        add_action('wp_ajax_wmf_normalize_languages', [$this, 'handle_normalize_languages']);
+        add_action('wp_ajax_wmf_fix_all_posts', [$this, 'handle_fix_all_posts']);
+        add_action('wp_ajax_wmf_fix_all_terms', [$this, 'handle_fix_all_terms']);
+        add_action('wp_ajax_wmf_fix_betterdocs', [$this, 'handle_fix_betterdocs']);
+        add_action('wp_ajax_wmf_fix_woo_attributes', [$this, 'handle_fix_woo_attributes']);
         
         // Log successful initialization
         if ($this->logger) {
@@ -1679,6 +1687,307 @@ class WPML_Fixer_Ajax_Handler {
             wp_send_json_error('Connection test failed: ' . $e->getMessage());
         }
     }
+    /**
+     * Handle ensure term_language buckets
+     */
+    public function handle_ensure_buckets() {
+        $this->verify_request(true);
+
+        try {
+            $created = $this->db_helper->ensure_term_language_buckets();
+
+            wp_send_json_success([
+                'message' => "Created {$created} missing term_language buckets",
+                'created' => $created
+            ]);
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Failed to ensure buckets", $e);
+            }
+            wp_send_json_error('Failed to ensure buckets: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Handle language normalization
+     */
+    public function handle_normalize_languages() {
+        $this->verify_request(true);
+
+        try {
+            $offset = intval($_POST['offset'] ?? 0);
+            $batch_size = intval($_POST['batch_size'] ?? 50);
+
+            // Process posts first
+            if ($offset < 10000) {
+                $posts_offset = $offset;
+                $posts = $this->get_posts_batch($posts_offset, $batch_size);
+                $results = $this->normalize_posts_languages($posts);
+                $results['continue'] = !empty($posts);
+                $results['next_offset'] = $offset + $batch_size;
+            } else {
+                // Then process terms
+                $terms_offset = $offset - 10000;
+                $terms = $this->get_terms_batch($terms_offset, $batch_size);
+                $results = $this->normalize_terms_languages($terms);
+                $results['continue'] = !empty($terms);
+                $results['next_offset'] = $offset + $batch_size;
+            }
+
+            wp_send_json_success($results);
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Failed to normalize languages", $e);
+            }
+            wp_send_json_error('Failed to normalize: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Handle fix all posts
+     */
+    public function handle_fix_all_posts() {
+        $this->verify_request(true);
+
+        try {
+            $offset = intval($_POST['offset'] ?? 0);
+            $batch_size = intval($_POST['batch_size'] ?? 50);
+
+            global $wpdb;
+
+            // Get public post types
+            $post_types = get_post_types(['public' => true], 'names');
+            $excluded = $this->db_helper->get_excluded_post_types();
+            $post_types = array_diff($post_types, $excluded);
+
+            if (empty($post_types)) {
+                wp_send_json_success([
+                    'processed' => 0,
+                    'fixed' => 0,
+                    'continue' => false,
+                    'message' => 'No post types to process'
+                ]);
+                return;
+            }
+
+            $post_types_sql = "'" . implode("','", array_map('esc_sql', $post_types)) . "'";
+
+            // Get batch of posts
+            $posts = $wpdb->get_col($wpdb->prepare("
+                SELECT ID FROM {$wpdb->posts}
+                WHERE post_type IN ({$post_types_sql})
+                AND post_status IN ('publish', 'draft', 'private')
+                ORDER BY ID
+                LIMIT %d OFFSET %d
+            ", $batch_size, $offset));
+
+            $results = ['processed' => 0, 'fixed' => 0, 'continue' => false];
+
+            if (!empty($posts)) {
+                $batch_results = $this->db_helper->fix_posts_batch($posts);
+                $results = $batch_results;
+            }
+
+            // Check if we should continue
+            $total = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->posts}
+                WHERE post_type IN ({$post_types_sql})
+                AND post_status IN ('publish', 'draft', 'private')
+            ");
+
+            $results['continue'] = ($offset + count($posts)) < $total;
+            $results['next_offset'] = $offset + $batch_size;
+            $results['total'] = $total;
+
+            wp_send_json_success($results);
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Failed to fix posts", $e);
+            }
+            wp_send_json_error('Failed to fix posts: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Handle fix all terms
+     */
+    public function handle_fix_all_terms() {
+        $this->verify_request(true);
+
+        try {
+            $offset = intval($_POST['offset'] ?? 0);
+            $batch_size = intval($_POST['batch_size'] ?? 50);
+
+            global $wpdb;
+
+            // Get public taxonomies
+            $taxonomies = get_taxonomies(['public' => true], 'names');
+            $excluded = $this->db_helper->get_excluded_taxonomies();
+            $taxonomies = array_diff($taxonomies, $excluded);
+
+            // Include WooCommerce attributes
+            $attributes = $wpdb->get_col("
+                SELECT DISTINCT taxonomy FROM {$wpdb->term_taxonomy}
+                WHERE taxonomy LIKE 'pa_%'
+            ");
+            $taxonomies = array_merge($taxonomies, $attributes);
+
+            if (empty($taxonomies)) {
+                wp_send_json_success([
+                    'processed' => 0,
+                    'fixed' => 0,
+                    'continue' => false,
+                    'message' => 'No taxonomies to process'
+                ]);
+                return;
+            }
+
+            $taxonomies_sql = "'" . implode("','", array_map('esc_sql', $taxonomies)) . "'";
+
+            // Get batch of terms
+            $terms = $wpdb->get_results($wpdb->prepare("
+                SELECT tt.term_taxonomy_id, tt.term_id, tt.taxonomy
+                FROM {$wpdb->term_taxonomy} tt
+                WHERE tt.taxonomy IN ({$taxonomies_sql})
+                ORDER BY tt.term_taxonomy_id
+                LIMIT %d OFFSET %d
+            ", $batch_size, $offset));
+
+            $results = ['processed' => 0, 'fixed' => 0, 'continue' => false];
+
+            if (!empty($terms)) {
+                $batch_results = $this->db_helper->fix_terms_batch($terms);
+                $results = $batch_results;
+            }
+
+            // Check if we should continue
+            $total = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->term_taxonomy}
+                WHERE taxonomy IN ({$taxonomies_sql})
+            ");
+
+            $results['continue'] = ($offset + count($terms)) < $total;
+            $results['next_offset'] = $offset + $batch_size;
+            $results['total'] = $total;
+
+            wp_send_json_success($results);
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Failed to fix terms", $e);
+            }
+            wp_send_json_error('Failed to fix terms: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Handle fix BetterDocs
+     */
+    public function handle_fix_betterdocs() {
+        $this->verify_request(true);
+
+        try {
+            $type = sanitize_text_field($_POST['type'] ?? 'posts');
+            $offset = intval($_POST['offset'] ?? 0);
+            $batch_size = intval($_POST['batch_size'] ?? 50);
+
+            $results = $this->db_helper->fix_betterdocs_batch($type, $batch_size, $offset);
+
+            wp_send_json_success($results);
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Failed to fix BetterDocs", $e);
+            }
+            wp_send_json_error('Failed to fix BetterDocs: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Handle fix WooCommerce attributes
+     */
+    public function handle_fix_woo_attributes() {
+        $this->verify_request(true);
+
+        try {
+            $offset = intval($_POST['offset'] ?? 0);
+            $batch_size = intval($_POST['batch_size'] ?? 50);
+
+            $results = $this->db_helper->fix_woocommerce_attributes_batch($batch_size, $offset);
+
+            wp_send_json_success($results);
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Failed to fix WooCommerce attributes", $e);
+            }
+            wp_send_json_error('Failed to fix attributes: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Helper: Get posts batch for normalization
+     */
+    private function get_posts_batch($offset, $batch_size) {
+        global $wpdb;
+        return $wpdb->get_results($wpdb->prepare("
+            SELECT ID, post_type FROM {$wpdb->posts}
+            WHERE post_status IN ('publish', 'draft', 'private')
+            ORDER BY ID
+            LIMIT %d OFFSET %d
+        ", $batch_size, $offset));
+    }
+
+    /**
+     * Helper: Get terms batch for normalization
+     */
+    private function get_terms_batch($offset, $batch_size) {
+        global $wpdb;
+        return $wpdb->get_results($wpdb->prepare("
+            SELECT tt.term_taxonomy_id, tt.term_id, tt.taxonomy
+            FROM {$wpdb->term_taxonomy} tt
+            ORDER BY tt.term_taxonomy_id
+            LIMIT %d OFFSET %d
+        ", $batch_size, $offset));
+    }
+
+    /**
+     * Helper: Normalize posts languages
+     */
+    private function normalize_posts_languages($posts) {
+        $results = ['processed' => 0, 'fixed' => 0];
+
+        foreach ($posts as $post) {
+            $results['processed']++;
+            $current = pll_get_post_language($post->ID);
+            $normalized = $this->language_converter->canonicalize_slug($current);
+
+            if ($normalized && $normalized !== $current) {
+                pll_set_post_language($post->ID, $normalized);
+                $results['fixed']++;
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Helper: Normalize terms languages
+     */
+    private function normalize_terms_languages($terms) {
+        $results = ['processed' => 0, 'fixed' => 0];
+
+        foreach ($terms as $term) {
+            $results['processed']++;
+            $current = pll_get_term_language($term->term_id);
+            $normalized = $this->language_converter->canonicalize_slug($current);
+
+            if ($normalized && $normalized !== $current) {
+                pll_set_term_language($term->term_id, $normalized);
+                $results['fixed']++;
+            }
+        }
+
+        return $results;
+    }
+
     /**
      * Handle status request for the Status tab.
      */

@@ -813,6 +813,138 @@ jQuery(document).ready(function($) {
         },
 
         /**
+         * Ensure term_language buckets exist
+         */
+        ensureBuckets: function() {
+            var self = this;
+            $("#btn-ensure-buckets").prop("disabled", true);
+            self.debugLog('Ensuring term_language buckets...');
+
+            var requestData = self.createRequestData("wmf_ensure_buckets");
+
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success) {
+                        self.showTemporaryMessage(response.data.message, 'success');
+                        self.debugLog('✅ ' + response.data.message);
+                    } else {
+                        self.showTemporaryMessage('Failed to ensure buckets', 'error');
+                        self.debugLog('❌ Failed to ensure buckets', 'error');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    self.showTemporaryMessage('Request failed: ' + error, 'error');
+                    self.debugLog('❌ Request failed: ' + error, 'error');
+                })
+                .always(function() {
+                    $("#btn-ensure-buckets").prop("disabled", false);
+                });
+        },
+
+        /**
+         * Normalize all language codes
+         */
+        normalizeLanguages: function() {
+            var self = this;
+            self.startBatchProcess('normalize', 'wmf_normalize_languages');
+        },
+
+        /**
+         * Fix all posts (comprehensive)
+         */
+        fixAllPosts: function() {
+            var self = this;
+            self.startBatchProcess('all-posts', 'wmf_fix_all_posts');
+        },
+
+        /**
+         * Fix all terms (comprehensive)
+         */
+        fixAllTerms: function() {
+            var self = this;
+            self.startBatchProcess('all-terms', 'wmf_fix_all_terms');
+        },
+
+        /**
+         * Fix BetterDocs (comprehensive)
+         */
+        fixBetterDocs: function() {
+            var self = this;
+            self.startBatchProcess('fix-betterdocs', 'wmf_fix_betterdocs', { type: 'posts' });
+        },
+
+        /**
+         * Fix WooCommerce attributes
+         */
+        fixWooAttributes: function() {
+            var self = this;
+            self.startBatchProcess('woo-attributes', 'wmf_fix_woo_attributes');
+        },
+
+        /**
+         * Generic batch process starter
+         */
+        startBatchProcess: function(processId, action, additionalData) {
+            var self = this;
+
+            if (self.processingStates[processId]) {
+                self.debugLog('Process ' + processId + ' already running', 'warning');
+                return;
+            }
+
+            self.processingStates[processId] = true;
+            self.setupProgressUI(processId);
+            self.updateProgressUI(processId, 0, 'Starting...');
+
+            self.debugLog('Starting batch process: ' + processId);
+
+            self.processBatch(processId, action, 0, additionalData || {});
+        },
+
+        /**
+         * Process a batch with the new comprehensive handlers
+         */
+        processBatch: function(processId, action, offset, additionalData) {
+            var self = this;
+
+            if (!self.processingStates[processId]) {
+                self.debugLog('Process ' + processId + ' was stopped', 'warning');
+                return;
+            }
+
+            var requestData = self.createRequestData(action, $.extend({
+                offset: offset,
+                batch_size: 50
+            }, additionalData));
+
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success) {
+                        var data = response.data;
+                        var progress = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 100;
+
+                        self.updateProgressUI(processId, progress,
+                            'Processed: ' + data.processed + '/' + data.total + ' (Fixed: ' + data.fixed + ')');
+
+                        self.debugLog('Progress ' + processId + ': ' + progress + '% - Fixed: ' + data.fixed);
+
+                        if (data.continue && data.next_offset !== undefined) {
+                            setTimeout(function() {
+                                self.processBatch(processId, action, data.next_offset, additionalData);
+                            }, 100);
+                        } else {
+                            self.completeProcess(processId, data);
+                        }
+                    } else {
+                        self.failProcess(processId, response && response.data ? response.data : 'Unknown error');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    self.failProcess(processId, error || status || 'Request failed');
+                });
+        },
+
+        /**
          * NEW: Run comprehensive verification with enhanced timeout handling
          */
         runComprehensiveVerification: function() {

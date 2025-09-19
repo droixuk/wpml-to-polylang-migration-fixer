@@ -71,6 +71,9 @@ class WPML_Fixer_UI_Renderer {
                     <button id="btn-comprehensive-verify" class="wpml-btn wpml-btn-large" onclick="wpmlFixerAjax.runComprehensiveVerification()">
                         <?php _e('🔍 Comprehensive Verification', 'wpml-migration-fixer'); ?>
                     </button>
+                    <button id="btn-ensure-buckets" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.ensureBuckets()">
+                        <?php _e('Ensure Language Buckets', 'wpml-migration-fixer'); ?>
+                    </button>
                     <button id="btn-test-connection" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.testConnection()">
                         <?php _e('Test Connection', 'wpml-migration-fixer'); ?>
                     </button>
@@ -96,19 +99,45 @@ class WPML_Fixer_UI_Renderer {
                     </p>
                     
 
+                    <!-- Normalize Language Codes -->
+                    <div class="fix-section">
+                        <h3>🔄 <?php _e('Normalize Language Codes', 'wpml-migration-fixer'); ?></h3>
+                        <p class="fix-description">
+                            <?php _e('Canonicalize language codes and merge variants (e.g., en-au → en-gb)', 'wpml-migration-fixer'); ?>
+                        </p>
+                        <button id="btn-normalize" class="wpml-btn" data-progress-trigger="normalize" onclick="wpmlFixerAjax.normalizeLanguages()">
+                            <?php _e('Normalize All Language Codes', 'wpml-migration-fixer'); ?>
+                        </button>
+                        <div id="progress-normalize" class="progress-wrapper" data-progress-for="normalize">
+                            <div class="progress-bar" data-progress-role="bar">
+                                <div id="progress-bar-normalize" class="progress-fill" data-progress-role="fill"></div>
+                                <div id="progress-text-normalize" class="progress-text" data-progress-role="text">0%</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Posts & Pages -->
                     <div class="fix-section">
                         <h3>📝 <?php _e('Posts & Pages', 'wpml-migration-fixer'); ?></h3>
                         <p class="fix-description">
-                            <?php _e('Fix language assignments for all posts, pages, and custom post types', 'wpml-migration-fixer'); ?>
+                            <?php _e('Fix language assignments for all posts, pages, and custom post types using WPML data', 'wpml-migration-fixer'); ?>
                         </p>
                         <button id="btn-posts" class="wpml-btn" data-progress-trigger="posts" onclick="wpmlFixerAjax.startProcess('posts')">
-                            <?php _e('Fix Posts & Pages', 'wpml-migration-fixer'); ?>
+                            <?php _e('Fix Posts & Pages (Legacy)', 'wpml-migration-fixer'); ?>
+                        </button>
+                        <button id="btn-fix-all-posts" class="wpml-btn wpml-btn-primary" data-progress-trigger="all-posts" onclick="wpmlFixerAjax.fixAllPosts()">
+                            <?php _e('Fix All Posts (Comprehensive)', 'wpml-migration-fixer'); ?>
                         </button>
                         <div id="progress-posts" class="progress-wrapper" data-progress-for="posts">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-posts" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-posts" class="progress-text" data-progress-role="text">0%</div>
+                            </div>
+                        </div>
+                        <div id="progress-all-posts" class="progress-wrapper" data-progress-for="all-posts">
+                            <div class="progress-bar" data-progress-role="bar">
+                                <div id="progress-bar-all-posts" class="progress-fill" data-progress-role="fill"></div>
+                                <div id="progress-text-all-posts" class="progress-text" data-progress-role="text">0%</div>
                             </div>
                         </div>
                     </div>
@@ -117,15 +146,24 @@ class WPML_Fixer_UI_Renderer {
                     <div class="fix-section">
                         <h3>🏷️ <?php _e('Categories & Tags', 'wpml-migration-fixer'); ?></h3>
                         <p class="fix-description">
-                            <?php _e('Fix all taxonomies including categories, tags, and custom taxonomies', 'wpml-migration-fixer'); ?>
+                            <?php _e('Fix all taxonomies including categories, tags, custom taxonomies, and WooCommerce attributes', 'wpml-migration-fixer'); ?>
                         </p>
                         <button id="btn-taxonomies" class="wpml-btn" data-progress-trigger="taxonomies" onclick="wpmlFixerAjax.startProcess('taxonomies')">
-                            <?php _e('Fix All Taxonomies', 'wpml-migration-fixer'); ?>
+                            <?php _e('Fix Taxonomies (Legacy)', 'wpml-migration-fixer'); ?>
+                        </button>
+                        <button id="btn-fix-all-terms" class="wpml-btn wpml-btn-primary" data-progress-trigger="all-terms" onclick="wpmlFixerAjax.fixAllTerms()">
+                            <?php _e('Fix All Terms (Comprehensive)', 'wpml-migration-fixer'); ?>
                         </button>
                         <div id="progress-taxonomies" class="progress-wrapper" data-progress-for="taxonomies">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-taxonomies" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-taxonomies" class="progress-text" data-progress-role="text">0%</div>
+                            </div>
+                        </div>
+                        <div id="progress-all-terms" class="progress-wrapper" data-progress-for="all-terms">
+                            <div class="progress-bar" data-progress-role="bar">
+                                <div id="progress-bar-all-terms" class="progress-fill" data-progress-role="fill"></div>
+                                <div id="progress-text-all-terms" class="progress-text" data-progress-role="text">0%</div>
                             </div>
                         </div>
                     </div>
@@ -138,7 +176,10 @@ class WPML_Fixer_UI_Renderer {
                             <?php _e('Fix product content, categories, shipping classes, and variations', 'wpml-migration-fixer'); ?>
                         </p>
                         <button id="btn-woocommerce" class="wpml-btn" data-progress-trigger="woocommerce" onclick="wpmlFixerAjax.startProcess('woocommerce')">
-                            <?php _e('Fix WooCommerce Content', 'wpml-migration-fixer'); ?>
+                            <?php _e('Fix WooCommerce Products', 'wpml-migration-fixer'); ?>
+                        </button>
+                        <button id="btn-woo-attributes" class="wpml-btn wpml-btn-primary" data-progress-trigger="woo-attributes" onclick="wpmlFixerAjax.fixWooAttributes()">
+                            <?php _e('Fix Product Attributes (pa_*)', 'wpml-migration-fixer'); ?>
                         </button>
                         <div id="progress-woocommerce" class="progress-wrapper" data-progress-for="woocommerce">
                             <div class="progress-bar" data-progress-role="bar">
@@ -146,23 +187,38 @@ class WPML_Fixer_UI_Renderer {
                                 <div id="progress-text-woocommerce" class="progress-text" data-progress-role="text">0%</div>
                             </div>
                         </div>
+                        <div id="progress-woo-attributes" class="progress-wrapper" data-progress-for="woo-attributes">
+                            <div class="progress-bar" data-progress-role="bar">
+                                <div id="progress-bar-woo-attributes" class="progress-fill" data-progress-role="fill"></div>
+                                <div id="progress-text-woo-attributes" class="progress-text" data-progress-role="text">0%</div>
+                            </div>
+                        </div>
                     </div>
                     <?php endif; ?>
                     
-                    <?php if (post_type_exists('docs')): ?>
+                    <?php if (post_type_exists('docs') || post_type_exists('betterdocs_faq')): ?>
                     <!-- BetterDocs -->
                     <div class="fix-section">
                         <h3>📚 <?php _e('BetterDocs', 'wpml-migration-fixer'); ?></h3>
                         <p class="fix-description">
-                            <?php _e('Fix BetterDocs documentation and their categories', 'wpml-migration-fixer'); ?>
+                            <?php _e('Fix BetterDocs documentation, FAQs, and their categories', 'wpml-migration-fixer'); ?>
                         </p>
                         <button id="btn-betterdocs" class="wpml-btn" data-progress-trigger="betterdocs" onclick="wpmlFixerAjax.startProcess('betterdocs')">
-                            <?php _e('Fix BetterDocs', 'wpml-migration-fixer'); ?>
+                            <?php _e('Fix BetterDocs (Legacy)', 'wpml-migration-fixer'); ?>
+                        </button>
+                        <button id="btn-fix-betterdocs" class="wpml-btn wpml-btn-primary" data-progress-trigger="fix-betterdocs" onclick="wpmlFixerAjax.fixBetterDocs()">
+                            <?php _e('Fix BetterDocs (Comprehensive)', 'wpml-migration-fixer'); ?>
                         </button>
                         <div id="progress-betterdocs" class="progress-wrapper" data-progress-for="betterdocs">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-betterdocs" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-betterdocs" class="progress-text" data-progress-role="text">0%</div>
+                            </div>
+                        </div>
+                        <div id="progress-fix-betterdocs" class="progress-wrapper" data-progress-for="fix-betterdocs">
+                            <div class="progress-bar" data-progress-role="bar">
+                                <div id="progress-bar-fix-betterdocs" class="progress-fill" data-progress-role="fill"></div>
+                                <div id="progress-text-fix-betterdocs" class="progress-text" data-progress-role="text">0%</div>
                             </div>
                         </div>
                     </div>
