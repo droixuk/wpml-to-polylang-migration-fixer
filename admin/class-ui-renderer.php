@@ -132,25 +132,18 @@ class WPML_Fixer_UI_Renderer {
                     
                     <?php if (class_exists('WooCommerce')): ?>
                     <!-- WooCommerce Section -->
-                    <div class="fix-section" style="background: #f0f8ff; border: 1px solid #d0e5ff;">
+                    <div class="fix-section">
                         <h3>🛍️ <?php _e('WooCommerce', 'wpml-migration-fixer'); ?></h3>
-                        
-                        <!-- WooCommerce Products & Taxonomies -->
-                        <div style="margin-bottom: 15px; padding: 15px; background: white; border-radius: 5px;">
-                            <h4 style="margin: 0 0 10px 0; font-size: 16px;">
-                                <?php _e('Products & Categories', 'wpml-migration-fixer'); ?>
-                            </h4>
-                            <p class="fix-description">
-                                <?php _e('Fix product categories, tags, shipping classes, and variations', 'wpml-migration-fixer'); ?>
-                            </p>
-                            <button id="btn-woocommerce" class="wpml-btn" data-progress-trigger="woocommerce" onclick="wpmlFixerAjax.startProcess('woocommerce')">
-                                <?php _e('Fix WooCommerce Content', 'wpml-migration-fixer'); ?>
-                            </button>
-                            <div id="progress-woocommerce" class="progress-wrapper" data-progress-for="woocommerce">
-                                <div class="progress-bar" data-progress-role="bar">
-                                    <div id="progress-bar-woocommerce" class="progress-fill" data-progress-role="fill"></div>
-                                    <div id="progress-text-woocommerce" class="progress-text" data-progress-role="text">0%</div>
-                                </div>
+                        <p class="fix-description">
+                            <?php _e('Fix product content, categories, shipping classes, and variations', 'wpml-migration-fixer'); ?>
+                        </p>
+                        <button id="btn-woocommerce" class="wpml-btn" data-progress-trigger="woocommerce" onclick="wpmlFixerAjax.startProcess('woocommerce')">
+                            <?php _e('Fix WooCommerce Content', 'wpml-migration-fixer'); ?>
+                        </button>
+                        <div id="progress-woocommerce" class="progress-wrapper" data-progress-for="woocommerce">
+                            <div class="progress-bar" data-progress-role="bar">
+                                <div id="progress-bar-woocommerce" class="progress-fill" data-progress-role="fill"></div>
+                                <div id="progress-text-woocommerce" class="progress-text" data-progress-role="text">0%</div>
                             </div>
                         </div>
                     </div>

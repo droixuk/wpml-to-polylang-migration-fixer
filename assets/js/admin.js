@@ -44,19 +44,18 @@ jQuery(document).ready(function($) {
             window.wpmlFixerAjax.nonceName = 'wpml_fixer_ajax';
         }
         
-        // Set up default strings
-        if (!window.wpmlFixerAjax.strings || Object.keys(window.wpmlFixerAjax.strings).length === 0) {
-            window.wpmlFixerAjax.strings = {
-                confirmFix: 'This will process all items. Continue?',
-                processing: 'Processing...',
-                complete: 'Complete!',
-                error: 'An error occurred. Please check the logs.',
-                verifying: 'Running comprehensive verification...',
-                verifyingHint: 'This may take a few moments. Please keep this tab open.',
-                verifyingButton: 'Processing verification…',
-                verificationComplete: 'Verification complete!'
-            };
-        }
+        var defaultStrings = {
+            confirmReset: 'Are you sure you want to reset the session?',
+            confirmFix: 'This will process all items. Continue?',
+            processing: 'Processing...',
+            complete: 'Complete!',
+            error: 'An error occurred. Please check the logs.',
+            verifying: 'Running comprehensive verification...',
+            verifyingHint: 'This may take a few moments. Please keep this tab open.',
+            verifyingButton: 'Processing verification…',
+            verificationComplete: 'Verification complete!'
+        };
+        window.wpmlFixerAjax.strings = $.extend({}, defaultStrings, window.wpmlFixerAjax.strings || {});
         
         console.log('WPML Fixer: Initialization complete', {
             hasNonce: !!window.wpmlFixerAjax.nonce,
@@ -373,6 +372,9 @@ jQuery(document).ready(function($) {
             $("#btn-comprehensive-verify").prop("disabled", true);
             
             var requestData = self.createRequestData("wpml_fixer_ajax_comprehensive_verify");
+            var loadingHint = self.strings.verifyingHint || 'This may take a few moments. Please keep this tab open.';
+            var loadingButtonText = self.strings.verifyingButton || self.strings.verifying;
+
             $("#verify-results")
                 .stop(true, true)
                 .html(
@@ -380,14 +382,14 @@ jQuery(document).ready(function($) {
                         '<div class="spinner"></div>' +
                         '<p>' + self.strings.verifying + '</p>' +
                         '<p class="verification-loading__hint">' +
-                            '⚠️ ' + self.strings.verifyingHint +
+                            '⚠️ ' + loadingHint +
                         '</p>' +
                     '</div>'
                 );
             $('#btn-comprehensive-verify')
                 .prop('disabled', true)
                 .addClass('is-loading')
-                .text(self.strings.verifyingButton || self.strings.verifying);
+                .text(loadingButtonText);
             
             self.debugLog('Starting comprehensive verification with enhanced handling...');
             
@@ -434,10 +436,10 @@ jQuery(document).ready(function($) {
                 self.debugLog('❌ Comprehensive verification failed: ' + error, 'error');
             })
             .always(function() {
-                $("#btn-comprehensive-verify")
+                $('#btn-comprehensive-verify')
                     .prop("disabled", false)
                     .removeClass('is-loading')
-                    .text($("#btn-comprehensive-verify").data('original-text') || 'Comprehensive Verification');
+                    .text($('#btn-comprehensive-verify').data('original-text') || 'Comprehensive Verification');
             });
         },
         
@@ -756,25 +758,6 @@ jQuery(document).ready(function($) {
         },
 
     });
-
-    // Preserve reference so later assignments merge instead of replace
-    var fixerInstance = window.wpmlFixerAjax;
-    try {
-        Object.defineProperty(window, 'wpmlFixerAjax', {
-            configurable: true,
-            get: function() {
-                return fixerInstance;
-            },
-            set: function(value) {
-                if (value && typeof value === 'object') {
-                    $.extend(fixerInstance, value);
-                }
-            }
-        });
-    } catch (e) {
-        // Fallback for environments that do not support defineProperty on window
-        window.wpmlFixerAjax = fixerInstance;
-    }
 
     // Store original button text for restoration
     $('[id^="btn-"]').each(function() {
