@@ -1,47 +1,46 @@
-# WPML to Polylang Migration Fixer Plugin
+# WPML to Polylang Migration Fixer
 
-## Complete Plugin Structure
-
-This WordPress plugin has been restructured from a single snippet into a professional, maintainable plugin with proper architecture, verification, and automated fixes.
+A comprehensive WordPress plugin that fixes language assignments and translation groups after migrating from WPML to Polylang. This tool ensures proper language configuration for posts, pages, custom post types, taxonomies, WooCommerce products, and BetterDocs content.
 
 -----
 
 ## Directory Structure
 
 ```
-wpml-migration-fixer/
-├── wpml-migration-fixer.php         # Main plugin file
-├── README.md                        # This file
-├── languages/                       # Translation files (optional)
-│   └── wpml-migration-fixer.pot
-├── includes/                        # Core functionality
-│   ├── class-debug-logger.php       # Debug and error logging
-│   ├── class-language-converter.php # Language code conversion
-│   └── class-database-helper.php    # Database operations & diagnostics
-├── admin/                           # Admin functionality
-│   ├── class-admin-handler.php      # Admin interface handler
-│   ├── class-ajax-handler.php       # AJAX request handler
-│   ├── class-ui-renderer.php        # UI rendering
-│   └── views/                       # View templates
-│       ├── analysis-results.php     # Analysis results template
-│       ├── diagnosis-results.php    # Diagnosis results template
-│       └── verification-results.php # Verification results template
-└── assets/                          # Static resources
-    ├── css/
-    │   └── admin.css                # Admin styles
-    └── js/
-        └── admin.js                 # Admin JavaScript
+wpml-to-polylang-migration-fixer/
+├── wpml-to-polylang-migration-fixer.php    # Main plugin file (v1.1.0)
+├── README.md                                # Documentation
+├── includes/                                # Core functionality
+│   ├── class-debug-logger.php              # Debug and error logging system
+│   ├── class-language-converter.php        # WPML to Polylang language code conversion
+│   ├── class-database-helper.php           # Database operations & diagnostics
+│   └── class-migration-verifier.php        # Comprehensive migration verification
+├── admin/                                   # Admin functionality
+│   ├── class-admin-handler.php             # Admin interface and menu handler
+│   ├── class-ajax-handler.php              # AJAX request processing
+│   ├── class-ui-renderer.php               # UI component rendering
+│   └── views/                              # View templates
+│       └── verification-results-comprehensive.php  # Enhanced verification results
+├── assets/                                  # Static resources
+│   ├── css/
+│   │   └── admin.css                       # Admin panel styles
+│   └── js/
+│       └── admin.js                        # Admin JavaScript (AJAX, progress bars)
+└── backups_cleanup_20250919_181201/        # Backup files (optional)
 ```
 
 -----
 
-## Installation Instructions
+## Installation
 
-1.  **Create the plugin directory:**
-    `wp-content/plugins/wpml-migration-fixer/`
-2.  **Copy files** into the structure shown above.
-3.  **Activate the plugin** in WordPress via `Plugins → Installed Plugins → WPML Fixer → Activate`.
-4.  **Access the tool** in `Tools → WPML Fixer`.
+1.  **Upload the plugin:**
+    - Download or clone this repository
+    - Upload to `wp-content/plugins/wpml-to-polylang-migration-fixer/`
+2.  **Activate the plugin** in WordPress Admin:
+    - Navigate to `Plugins → Installed Plugins`
+    - Find "WPML to Polylang Migration Fixer" and click `Activate`
+3.  **Access the tool:**
+    - Go to `Tools → WPML Fixer` in your WordPress admin panel
 
 -----
 
@@ -49,123 +48,258 @@ wpml-migration-fixer/
 
 ### Core Functionality
 
-  * **Analysis** – Counts posts/terms with and without language assignments.
-  * **Diagnosis** – Detects corrupted `pll_` codes and unsupported English variants.
-  * **Verification** – Checks translation groups, orphaned languages, and duplicate assignments.
-  * **Fixes**:
-      * **Posts & Pages** – Assigns languages to posts, pages, and custom post types.
-      * **Taxonomies** – Fixes all term taxonomies.
-      * **WooCommerce** – Products, variations (inherit parent language), and WC taxonomies.
-      * **WooCommerce Attributes** – Ensures `pa_*` terms have a language.
-      * **BetterDocs** – Fixes docs, categories, tags, and knowledge bases.
-      * **Translation Groups** – Rebuilds Polylang translation containers.
-  * **Emergency Fixes**:
-      * Remove corrupted `pll_` prefixed codes.
-      * Normalize English variants (e.g., `en-GB` → `en`).
+#### Analysis & Diagnostics
+- **Comprehensive Analysis** - Counts posts, pages, and terms with/without language assignments
+- **Smart Diagnosis** - Detects corrupted `pll_` language codes and unsupported language variants
+- **Migration Verification** - Validates translation groups, identifies orphaned content, and detects duplicate assignments
+- **WPML Data Detection** - Checks for existing WPML tables and data remnants
 
-### Debug & Monitoring
+#### Automated Fixes
+- **Posts & Pages** - Assigns correct languages to all post types based on WPML data
+- **Taxonomies** - Fixes language assignments for all taxonomies (categories, tags, custom)
+- **WooCommerce Support**:
+  - Products and product variations (inherits parent language)
+  - Product categories and tags
+  - Product attributes (`pa_*` taxonomies)
+- **BetterDocs Integration**:
+  - Documentation articles (`docs` post type)
+  - Documentation categories and tags
+  - Knowledge bases taxonomy
+- **Translation Groups** - Rebuilds Polylang translation relationships from WPML data
+- **Menu Items** - Fixes language assignments for navigation menus
 
-  * Debug logging with daily files stored in the uploads directory.
-  * Performance tracking (items/sec, batch times).
-  * Error handling with transaction rollbacks for database safety.
-  * Export logs as a ZIP file for support.
+#### Emergency Fixes
+- Remove corrupted `pll_` prefixed language codes
+- Normalize language variants (e.g., `en-GB` → `en`, `pt-BR` → `pt`)
+- Clean up duplicate language assignments
 
-### UI Features
+### Advanced Features
 
-  * Accordion interface with clearly defined sections.
-  * AJAX-based processing with **progress bars**.
-  * Real-time updates during batch runs.
-  * Configurable batch size (from 5 to 100).
+#### Performance & Reliability
+- **Batch Processing** - Configurable batch sizes (5-100 items) to prevent timeouts
+- **Transaction Safety** - Database rollbacks on errors to prevent data corruption
+- **Progress Tracking** - Real-time progress bars with ETA calculations
+- **Memory Management** - Optimized queries and chunked processing
+
+#### Debug & Monitoring
+- **Detailed Logging** - Daily log files in `wp-content/uploads/wpml-to-polylang-fixer-logs/`
+- **Performance Metrics** - Processing speed (items/sec) and batch timing
+- **Error Tracking** - Comprehensive error logging with stack traces
+- **Log Export** - One-click ZIP export of all logs for support
+
+### User Interface
+- **Modern Admin Panel** - Clean, intuitive interface integrated into WordPress admin
+- **Accordion Sections** - Organized tools grouped by functionality
+- **AJAX Processing** - No page refreshes during operations
+- **Real-time Updates** - Live progress bars and status messages
+- **Responsive Design** - Works on all screen sizes
 
 -----
 
-## Usage
+## Usage Guide
 
-1.  **Run Analysis** → Get quick stats on your posts and terms.
-2.  **Run Diagnosis** → Highlight issues like the `pll_` prefix or English variants.
-3.  **Apply Fixes** → Run the fixes in the recommended order:
-      * Emergency Fix → `pll_` prefix issues.
-      * Fix English Variants.
-      * Fix Posts & Pages.
-      * Fix Taxonomies.
-      * Fix WooCommerce (products/variations + categories).
-      * Fix Attributes (`pa_*`).
-      * Fix BetterDocs.
-      * Fix Translation Groups.
-4.  **Verify Migration** → Perform a final confirmation that all content is consistent.
+### Step 1: Initial Analysis
+1. Navigate to `Tools → WPML Fixer` in your WordPress admin
+2. Click **"Run Analysis"** to get an overview of content needing fixes
+3. Review the counts of posts and terms with/without language assignments
+
+### Step 2: Diagnosis
+1. Click **"Run Diagnosis"** to identify specific issues
+2. Check for:
+   - Corrupted `pll_` language codes
+   - Unsupported language variants
+   - Missing WPML data
+
+### Step 3: Apply Fixes (Recommended Order)
+1. **Emergency Fixes** (if needed):
+   - Fix `pll_` prefix issues
+   - Normalize language variants
+2. **Content Fixes**:
+   - Fix Posts & Pages
+   - Fix Taxonomies
+   - Fix WooCommerce Products (if using WooCommerce)
+   - Fix Product Attributes
+   - Fix BetterDocs (if using BetterDocs)
+3. **Relationship Fixes**:
+   - Fix Translation Groups (run this last)
+
+### Step 4: Verification
+1. Click **"Verify Migration"** for a comprehensive check
+2. Review the detailed report showing:
+   - Language assignments status
+   - Translation group integrity
+   - Any remaining issues
+3. Re-run specific fixes if issues are detected
 
 -----
 
 ## Configuration
 
-### Customizing Excluded Post Types
+### Settings
+The plugin provides several configurable options accessible through the admin interface:
 
+- **Batch Size**: Adjust processing batch size (5-100 items) based on server capacity
+- **Debug Mode**: Enable detailed logging for troubleshooting
+- **Language Mappings**: Configure custom language code mappings
+
+### Filters & Hooks
+
+#### Exclude Post Types
 ```php
-public function get_excluded_post_types() {
-    $excluded = [
-        'oembed_cache',
-        'wp_global_styles',
-        // Add your exclusions here
-    ];
-    return apply_filters('wpml_fixer_excluded_post_types', $excluded);
-}
+add_filter('wpml_fixer_excluded_post_types', function($excluded) {
+    $excluded[] = 'my_custom_type';  // Add your post type to exclude
+    return $excluded;
+});
 ```
 
-### Customizing Excluded Taxonomies
-
+#### Exclude Taxonomies
 ```php
-public function get_excluded_taxonomies() {
-    $excluded = [
-        'language',
-        'post_translations',
-        // Add your exclusions here
-    ];
-    return apply_filters('wpml_fixer_excluded_taxonomies', $excluded);
-}
+add_filter('wpml_fixer_excluded_taxonomies', function($excluded) {
+    $excluded[] = 'my_custom_taxonomy';  // Add your taxonomy to exclude
+    return $excluded;
+});
 ```
 
-## Requirements
-
-  * WordPress 5.0+
-  * PHP 7.0+
-  * Polylang (free or Pro) must be active.
-  * WPML tables (`icl_*`) must be present for reference.
-
-## Hooks & Filters
-
-  * `wpml_fixer_language_mappings` – Customize language code mappings.
-  * `wpml_fixer_excluded_post_types` – Modify excluded post types.
-  * `wpml_fixer_excluded_taxonomies` – Modify excluded taxonomies.
-
-**Example:**
-
+#### Custom Language Mappings
 ```php
 add_filter('wpml_fixer_language_mappings', function($mappings) {
-    $mappings['custom_code'] = 'mapped_code';
+    $mappings['custom_wpml_code'] = 'polylang_code';
     return $mappings;
 });
 ```
 
+## Requirements
+
+### System Requirements
+- **WordPress**: 5.0 or higher
+- **PHP**: 7.0 or higher
+- **MySQL**: 5.6 or higher
+
+### Plugin Dependencies
+- **Polylang**: Free or Pro version must be installed and activated
+- **WPML Data**: Original WPML database tables (`icl_*`) must still be present
+
+### Optional Integrations
+- **WooCommerce**: For e-commerce product migration
+- **BetterDocs**: For documentation migration
+
 ## Troubleshooting
 
-  * **Issue:** “WPML data not found”
-      * Ensure the original WPML tables still exist in your database.
-  * **Issue:** “Polylang not active”
-      * Install and activate the Polylang plugin.
-  * **Issue:** Timeouts during processing
-      * Lower the batch size setting in the plugin's UI (default is 20).
+### Common Issues
 
-## Support
+#### "WPML data not found"
+- **Cause**: WPML database tables have been removed
+- **Solution**: Ensure tables with prefix `icl_` still exist in your database
+- **Check**: Look for `wp_icl_translations` table in phpMyAdmin or database manager
 
-1.  Enable debug logging in the plugin's settings.
-2.  Run the operation that is failing.
-3.  Export the logs via `Settings → Export Logs`.
-4.  Share the exported ZIP file for review.
+#### "Polylang not active"
+- **Cause**: Polylang plugin is not installed or activated
+- **Solution**:
+  1. Install Polylang from WordPress.org repository
+  2. Activate the plugin
+  3. Configure at least one language
+
+#### Timeouts during processing
+- **Cause**: Server timeout limits or large dataset
+- **Solutions**:
+  - Reduce batch size to 10-20 items (default is 20)
+  - Increase PHP `max_execution_time` in php.ini
+  - Process content types separately
+
+#### Memory exhausted errors
+- **Cause**: Large number of posts/terms being processed
+- **Solutions**:
+  - Increase PHP `memory_limit` to at least 256M
+  - Use smaller batch sizes
+  - Run fixes during low-traffic periods
+
+#### JavaScript errors in admin panel
+- **Cause**: Conflict with other plugins or themes
+- **Solution**:
+  1. Check browser console for errors
+  2. Temporarily deactivate other plugins to identify conflicts
+  3. Ensure jQuery is loaded properly
+
+### Getting Support
+
+1. **Enable Debug Logging**:
+   - Go to plugin settings
+   - Enable "Debug Mode"
+   - Reproduce the issue
+
+2. **Collect Information**:
+   - WordPress version
+   - PHP version
+   - Polylang version
+   - Error messages from debug log
+
+3. **Export Logs**:
+   - Click "Export Logs" button in plugin settings
+   - Download the ZIP file containing all logs
+
+4. **Report Issue**:
+   - Include the exported logs
+   - Describe steps to reproduce
+   - List any custom code or modifications
+
+## Developer Information
+
+### Plugin Architecture
+The plugin follows WordPress coding standards and uses a modular architecture:
+- **Singleton Pattern**: Main plugin class prevents multiple instantiation
+- **Component-based**: Separate classes for each functionality
+- **AJAX Processing**: Non-blocking operations for better UX
+- **Database Transactions**: Ensures data integrity during batch operations
+
+### Key Classes
+- `WPML_To_Polylang_Migration_Fixer`: Main plugin orchestrator
+- `WPML_To_Polylang_Fixer_Database_Helper`: Database operations and queries
+- `WPML_To_Polylang_Fixer_Language_Converter`: Language code mapping
+- `WPML_To_Polylang_Migration_Verifier`: Comprehensive migration verification
+- `WPML_Fixer_Admin_Handler`: Admin interface management
+- `WPML_Fixer_Ajax_Handler`: AJAX request processing
+
+### Database Tables Used
+- **WPML Tables** (read-only):
+  - `{prefix}icl_translations`: Source for language assignments
+  - `{prefix}icl_strings`: String translations
+- **Polylang Tables** (read/write):
+  - `{prefix}term_relationships`: Language assignments
+  - `{prefix}term_taxonomy`: Translation groups
+
+## Changelog
+
+### Version 1.1.0
+- Added comprehensive migration verifier
+- Enhanced BetterDocs support
+- Improved progress tracking with ETA
+- Added memory usage monitoring
+- Stabilized JavaScript event handlers
+- Enhanced error reporting
+
+### Version 1.0.0
+- Initial release
+- Core migration functionality
+- WooCommerce support
+- Basic verification tools
 
 ## License
 
-GPL v2 or later
+This plugin is licensed under the GPL v2 or later.
 
-## Credits
+```
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+```
 
-Based on the original WPML→Polylang migration snippet, restructured into a professional WordPress plugin with verification and automatic fix workflows.
+## Author
+
+Developed for WordPress sites migrating from WPML to Polylang.
+
+## Acknowledgments
+
+- Built upon community knowledge and best practices for WPML to Polylang migration
+- Uses WordPress core APIs for maximum compatibility
+- Integrates with Polylang's translation management system

@@ -52,6 +52,8 @@ jQuery(document).ready(function($) {
                 complete: 'Complete!',
                 error: 'An error occurred. Please check the logs.',
                 verifying: 'Running comprehensive verification...',
+                verifyingHint: 'This may take a few moments. Please keep this tab open.',
+                verifyingButton: 'Processing verification…',
                 verificationComplete: 'Verification complete!'
             };
         }
@@ -371,6 +373,21 @@ jQuery(document).ready(function($) {
             $("#btn-comprehensive-verify").prop("disabled", true);
             
             var requestData = self.createRequestData("wpml_fixer_ajax_comprehensive_verify");
+            $("#verify-results")
+                .stop(true, true)
+                .html(
+                    '<div class="verification-loading">' +
+                        '<div class="spinner"></div>' +
+                        '<p>' + self.strings.verifying + '</p>' +
+                        '<p class="verification-loading__hint">' +
+                            '⚠️ ' + self.strings.verifyingHint +
+                        '</p>' +
+                    '</div>'
+                );
+            $('#btn-comprehensive-verify')
+                .prop('disabled', true)
+                .addClass('is-loading')
+                .text(self.strings.verifyingButton || self.strings.verifying);
             
             self.debugLog('Starting comprehensive verification with enhanced handling...');
             
@@ -384,7 +401,13 @@ jQuery(document).ready(function($) {
             })
             .done(function(response) {
                 if (response && response.success) {
-                    $("#verify-results").html(response.data);
+                    if (response.data && typeof response.data === 'string') {
+                        $("#verify-results").html(response.data);
+                    } else {
+                        $("#verify-results").html(
+                            self.displayError('Comprehensive verification finished, but no view was returned.')
+                        );
+                    }
                     self.debugLog('✅ Comprehensive verification completed successfully');
                     
                     // Show success message
@@ -411,7 +434,10 @@ jQuery(document).ready(function($) {
                 self.debugLog('❌ Comprehensive verification failed: ' + error, 'error');
             })
             .always(function() {
-                $("#btn-comprehensive-verify").prop("disabled", false);
+                $("#btn-comprehensive-verify")
+                    .prop("disabled", false)
+                    .removeClass('is-loading')
+                    .text($("#btn-comprehensive-verify").data('original-text') || 'Comprehensive Verification');
             });
         },
         
