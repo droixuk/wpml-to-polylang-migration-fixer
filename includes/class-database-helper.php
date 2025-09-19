@@ -487,6 +487,178 @@ class WPML_To_Polylang_Fixer_Database_Helper {
     }
 
     /**
+     * Ensure term_language buckets exist for all configured languages
+     * Polylang needs a twin bucket in term_language for every language term
+     *
+     * @return int Number of buckets created
+     */
+    public function ensure_term_language_buckets() {
+        global $wpdb;
+
+        $created = $wpdb->query("
+            INSERT IGNORE INTO {$wpdb->term_taxonomy} (term_id, taxonomy, description, parent, count)
+            SELECT t.term_id, 'term_language', '', 0, 0
+            FROM {$wpdb->terms} t
+            JOIN {$wpdb->term_taxonomy} tl ON tl.term_id=t.term_id AND tl.taxonomy='language'
+            LEFT JOIN {$wpdb->term_taxonomy} tl2 ON tl2.term_id=t.term_id AND tl2.taxonomy='term_language'
+            WHERE tl2.term_id IS NULL
+        ");
+
+        if ($this->logger) {
+            $this->logger->log("Created {$created} missing term_language buckets", 'info');
+        }
+
+        return $created;
+    }
+
+    /**
+     * Fix posts batch with comprehensive language assignment
+     * Uses WPML data as source, canonicalizes codes, ensures languages exist
+     *
+     * @param array $ids Post IDs to fix
+     * @return array Results with processed and fixed counts
+     */
+    public function fix_posts_batch($ids) {
+        global $wpdb;
+
+        $results = [
+            'processed' => 0,
+            'fixed' => 0,
+            'errors' => 0,
+            'details' => []
+        ];
+
+        // Initialize language converter if not already done
+        if (!isset($this->lang_converter)) {
+            $this->lang_converter = new WPML_To_Polylang_Fixer_Language_Converter();
+        }
+
+        foreach ($ids as $id) {
+            $results['processed']++;
+
+            try {
+                // Get current PLL language
+                $cur = function_exists('pll_get_post_language') ? pll_get_post_language($id) : null;
+
+                // Get WPML source language
+                $type = get_post_type($id);
+                $wpml = $wpdb->get_var($wpdb->prepare(
+                    "SELECT language_code FROM {$this->icl_table}
+                     WHERE element_id=%d AND element_type=%s LIMIT 1",
+                    $id, 'post_'.$type
+                ));
+
+                // Canonicalize and ensure language exists
+                $slug = $this->lang_converter->canonicalize_slug($wpml ?: $cur);
+                $slug = $this->lang_converter->ensure_pll_language_exists($slug);
+
+                if ($slug && $slug !== $cur) {
+                    pll_set_post_language($id, $slug);
+                    clean_post_cache($id);
+                    $results['fixed']++;
+
+                    if ($this->logger) {
+                        $this->logger->log("Post {$id} → {$slug} (from {$wpml})", 'debug');
+                    }
+                }
+            } catch (Exception $e) {
+                $results['errors']++;
+                $results['details'][] = "Error fixing post {$id}: " . $e->getMessage();
+
+                if ($this->logger) {
+                    $this->logger->log_error("Failed to fix post {$id}", $e);
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Fix terms batch with comprehensive language assignment
+     * Uses WPML data as source by term_taxonomy_id
+     *
+     * @param array $terms Array of term objects with term_id, taxonomy, term_taxonomy_id
+     * @return array Results with processed and fixed counts
+     */
+    public function fix_terms_batch($terms) {
+        global $wpdb;
+
+        $results = [
+            'processed' => 0,
+            'fixed' => 0,
+            'errors' => 0,
+            'details' => []
+        ];
+
+        // Initialize language converter if not already done
+        if (!isset($this->lang_converter)) {
+            $this->lang_converter = new WPML_To_Polylang_Fixer_Language_Converter();
+        }
+
+        foreach ($terms as $row) {
+            $term_id = (int)$row->term_id;
+            $taxonomy = $row->taxonomy;
+            $tt_id = (int)$row->term_taxonomy_id;
+
+            // Skip non-translatable/system taxonomies
+            if ($this->is_excluded_taxonomy($taxonomy)) {
+                continue;
+            }
+
+            $results['processed']++;
+
+            try {
+                // Get current PLL language
+                $cur = function_exists('pll_get_term_language') ? pll_get_term_language($term_id) : null;
+
+                // Get WPML source language
+                $wpml = $wpdb->get_var($wpdb->prepare(
+                    "SELECT language_code FROM {$this->icl_table}
+                     WHERE element_id=%d AND element_type=%s LIMIT 1",
+                    $tt_id, 'tax_'.$taxonomy
+                ));
+
+                // Canonicalize and ensure language exists
+                $slug = $this->lang_converter->canonicalize_slug($wpml ?: $cur ?: pll_default_language());
+                $slug = $this->lang_converter->ensure_pll_language_exists($slug);
+
+                if (!$slug) continue;
+
+                if ($slug !== $cur) {
+                    pll_set_term_language($term_id, $slug);
+                    clean_term_cache($term_id, $taxonomy);
+                    $results['fixed']++;
+
+                    if ($this->logger) {
+                        $this->logger->log("Term {$term_id} ({$taxonomy}) → {$slug}", 'debug');
+                    }
+                }
+            } catch (Exception $e) {
+                $results['errors']++;
+                $results['details'][] = "Error fixing term {$term_id}: " . $e->getMessage();
+
+                if ($this->logger) {
+                    $this->logger->log_error("Failed to fix term {$term_id}", $e);
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Check if taxonomy should be excluded from processing
+     *
+     * @param string $taxonomy Taxonomy name
+     * @return bool True if should be excluded
+     */
+    private function is_excluded_taxonomy($taxonomy) {
+        $excluded = $this->get_excluded_taxonomies();
+        return in_array($taxonomy, $excluded, true);
+    }
+
+    /**
      * Check if Polylang is active.
      */
     public function has_polylang(): bool {
@@ -541,5 +713,283 @@ class WPML_To_Polylang_Fixer_Database_Helper {
         }
 
         return $languages;
+    }
+
+    /**
+     * Fix BetterDocs content languages specifically
+     *
+     * @param string $type 'posts' or 'terms'
+     * @param int $batch_size Batch size for processing
+     * @param int $offset Offset for batching
+     * @return array Results array
+     */
+    public function fix_betterdocs_batch($type = 'posts', $batch_size = 50, $offset = 0) {
+        global $wpdb;
+
+        $results = [
+            'processed' => 0,
+            'fixed' => 0,
+            'total' => 0,
+            'continue' => false,
+            'next_offset' => 0
+        ];
+
+        if (!$this->has_betterdocs()) {
+            return $results;
+        }
+
+        if ($type === 'posts') {
+            // Fix BetterDocs posts (docs and betterdocs_faq)
+            $post_types = ['docs', 'betterdocs_faq'];
+            $post_types_sql = "'" . implode("','", array_map('esc_sql', $post_types)) . "'";
+
+            // Get total count
+            $results['total'] = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->posts}
+                WHERE post_type IN ({$post_types_sql})
+                AND post_status IN ('publish', 'draft', 'private')
+            ");
+
+            // Get batch of posts
+            $posts = $wpdb->get_col($wpdb->prepare("
+                SELECT ID FROM {$wpdb->posts}
+                WHERE post_type IN ({$post_types_sql})
+                AND post_status IN ('publish', 'draft', 'private')
+                ORDER BY ID
+                LIMIT %d OFFSET %d
+            ", $batch_size, $offset));
+
+            if (!empty($posts)) {
+                $batch_results = $this->fix_posts_batch($posts);
+                $results['processed'] = $batch_results['processed'];
+                $results['fixed'] = $batch_results['fixed'];
+            }
+        } else {
+            // Fix BetterDocs terms
+            $taxonomies = ['doc_category', 'doc_tag', 'knowledge_base', 'betterdocs_faq_category'];
+            $taxonomies_sql = "'" . implode("','", array_map('esc_sql', $taxonomies)) . "'";
+
+            // Get total count
+            $results['total'] = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->term_taxonomy}
+                WHERE taxonomy IN ({$taxonomies_sql})
+            ");
+
+            // Get batch of terms
+            $terms = $wpdb->get_results($wpdb->prepare("
+                SELECT tt.term_taxonomy_id, tt.term_id, tt.taxonomy
+                FROM {$wpdb->term_taxonomy} tt
+                WHERE tt.taxonomy IN ({$taxonomies_sql})
+                ORDER BY tt.term_taxonomy_id
+                LIMIT %d OFFSET %d
+            ", $batch_size, $offset));
+
+            if (!empty($terms)) {
+                $batch_results = $this->fix_terms_batch($terms);
+                $results['processed'] = $batch_results['processed'];
+                $results['fixed'] = $batch_results['fixed'];
+            }
+        }
+
+        // Check if we should continue
+        $results['continue'] = ($offset + $results['processed']) < $results['total'];
+        $results['next_offset'] = $offset + $batch_size;
+
+        return $results;
+    }
+
+    /**
+     * Fix WooCommerce product attributes (pa_*) languages
+     *
+     * @param int $batch_size Batch size for processing
+     * @param int $offset Offset for batching
+     * @return array Results array
+     */
+    public function fix_woocommerce_attributes_batch($batch_size = 50, $offset = 0) {
+        global $wpdb;
+
+        $results = [
+            'processed' => 0,
+            'fixed' => 0,
+            'total' => 0,
+            'continue' => false,
+            'next_offset' => 0,
+            'attributes' => []
+        ];
+
+        if (!$this->has_woocommerce()) {
+            return $results;
+        }
+
+        // Get all pa_* taxonomies
+        $attributes = $wpdb->get_col("
+            SELECT DISTINCT taxonomy FROM {$wpdb->term_taxonomy}
+            WHERE taxonomy LIKE 'pa_%'
+        ");
+
+        if (empty($attributes)) {
+            return $results;
+        }
+
+        $results['attributes'] = $attributes;
+        $attributes_sql = "'" . implode("','", array_map('esc_sql', $attributes)) . "'";
+
+        // Get total count
+        $results['total'] = $wpdb->get_var("
+            SELECT COUNT(*) FROM {$wpdb->term_taxonomy}
+            WHERE taxonomy IN ({$attributes_sql})
+        ");
+
+        // Get batch of attribute terms
+        $terms = $wpdb->get_results($wpdb->prepare("
+            SELECT tt.term_taxonomy_id, tt.term_id, tt.taxonomy
+            FROM {$wpdb->term_taxonomy} tt
+            WHERE tt.taxonomy IN ({$attributes_sql})
+            ORDER BY tt.term_taxonomy_id
+            LIMIT %d OFFSET %d
+        ", $batch_size, $offset));
+
+        if (!empty($terms)) {
+            $batch_results = $this->fix_terms_batch($terms);
+            $results['processed'] = $batch_results['processed'];
+            $results['fixed'] = $batch_results['fixed'];
+        }
+
+        // Check if we should continue
+        $results['continue'] = ($offset + $results['processed']) < $results['total'];
+        $results['next_offset'] = $offset + $batch_size;
+
+        return $results;
+    }
+
+    /**
+     * Get comprehensive verification results
+     * Includes all the SQL queries from the playbook
+     *
+     * @return array Verification results
+     */
+    public function get_comprehensive_verification() {
+        global $wpdb;
+
+        $results = [
+            'languages_configured' => [],
+            'term_language_buckets' => 0,
+            'posts_without_pll' => 0,
+            'terms_without_pll' => 0,
+            'betterdocs_issues' => [
+                'faq_posts_without_pll' => 0,
+                'faq_categories_without_pll' => 0
+            ],
+            'terms_per_language' => [],
+            'recommendations' => []
+        ];
+
+        try {
+            // Languages configured in Polylang
+            $languages = $wpdb->get_results("
+                SELECT t.term_id, t.slug, t.name
+                FROM {$wpdb->terms} t
+                JOIN {$wpdb->term_taxonomy} tt ON tt.term_id = t.term_id
+                WHERE tt.taxonomy='language'
+                ORDER BY t.slug
+            ");
+
+            foreach ($languages as $lang) {
+                $results['languages_configured'][] = [
+                    'id' => $lang->term_id,
+                    'slug' => $lang->slug,
+                    'name' => $lang->name
+                ];
+            }
+
+            // Count term_language buckets
+            $results['term_language_buckets'] = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->term_taxonomy}
+                WHERE taxonomy='term_language'
+            ");
+
+            // Posts without Polylang language
+            $results['posts_without_pll'] = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->posts} p
+                WHERE p.post_status IN ('publish','draft','private')
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM {$wpdb->term_relationships} tr
+                    JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id=tr.term_taxonomy_id AND tt.taxonomy='language'
+                    WHERE tr.object_id=p.ID
+                )
+            ");
+
+            // Terms without Polylang term language
+            $results['terms_without_pll'] = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->terms} t
+                JOIN {$wpdb->term_taxonomy} tt ON tt.term_id=t.term_id
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM {$wpdb->term_relationships} tr
+                    JOIN {$wpdb->term_taxonomy} tl ON tl.term_taxonomy_id=tr.term_taxonomy_id AND tl.taxonomy='term_language'
+                    WHERE tr.object_id=t.term_id
+                )
+            ");
+
+            // BetterDocs specific checks
+            if ($this->has_betterdocs()) {
+                // BetterDocs FAQ posts without PLL
+                $results['betterdocs_issues']['faq_posts_without_pll'] = $wpdb->get_var("
+                    SELECT COUNT(*) FROM {$wpdb->posts} p
+                    LEFT JOIN {$wpdb->term_relationships} tr ON tr.object_id=p.ID
+                    LEFT JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id=tr.term_taxonomy_id AND tt.taxonomy='language'
+                    WHERE p.post_type='betterdocs_faq' AND tt.term_taxonomy_id IS NULL
+                ");
+
+                // BetterDocs FAQ categories without term_language
+                $results['betterdocs_issues']['faq_categories_without_pll'] = $wpdb->get_var("
+                    SELECT COUNT(*) FROM {$wpdb->term_taxonomy} tt
+                    WHERE tt.taxonomy='betterdocs_faq_category'
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM {$wpdb->term_relationships} tr
+                        JOIN {$wpdb->term_taxonomy} tl ON tl.term_taxonomy_id=tr.term_taxonomy_id AND tl.taxonomy='term_language'
+                        WHERE tr.object_id=tt.term_id
+                    )
+                ");
+            }
+
+            // Terms per language
+            $terms_per_lang = $wpdb->get_results("
+                SELECT lang.slug, COUNT(*) AS terms
+                FROM {$wpdb->terms} t
+                JOIN {$wpdb->term_relationships} tr ON tr.object_id=t.term_id
+                JOIN {$wpdb->term_taxonomy} ttl ON ttl.term_taxonomy_id=tr.term_taxonomy_id AND ttl.taxonomy='term_language'
+                JOIN {$wpdb->terms} lang ON lang.term_id=ttl.term_id
+                GROUP BY lang.slug
+                ORDER BY terms DESC
+            ");
+
+            foreach ($terms_per_lang as $tpl) {
+                $results['terms_per_language'][$tpl->slug] = (int)$tpl->terms;
+            }
+
+            // Generate recommendations
+            if ($results['posts_without_pll'] > 0) {
+                $results['recommendations'][] = "Fix {$results['posts_without_pll']} posts without language assignments";
+            }
+            if ($results['terms_without_pll'] > 0) {
+                $results['recommendations'][] = "Fix {$results['terms_without_pll']} terms without language assignments";
+            }
+            if ($results['betterdocs_issues']['faq_posts_without_pll'] > 0) {
+                $results['recommendations'][] = "Fix {$results['betterdocs_issues']['faq_posts_without_pll']} BetterDocs FAQ posts";
+            }
+            if ($results['betterdocs_issues']['faq_categories_without_pll'] > 0) {
+                $results['recommendations'][] = "Fix {$results['betterdocs_issues']['faq_categories_without_pll']} BetterDocs FAQ categories";
+            }
+
+        } catch (Exception $e) {
+            if ($this->logger) {
+                $this->logger->log_error("Error in comprehensive verification", $e);
+            }
+        }
+
+        return $results;
     }
 }

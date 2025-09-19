@@ -292,6 +292,66 @@ class WPML_To_Polylang_Fixer_Language_Converter {
     }
     
     /**
+     * Canonicalize language code - normalize to Polylang format
+     *
+     * @param string $code Language code to canonicalize
+     * @return string Canonicalized language code
+     */
+    public function canonicalize_slug($code) {
+        if (!$code) return '';
+
+        $code = strtolower(trim($code));
+        $code = preg_replace('/^pll_/', '', $code);       // drop pll_ prefix
+        $code = str_replace('_', '-', $code);             // WPML uses _, PLL prefers -
+        $code = preg_replace('/[^a-z\-]/', '', $code);    // only a-z and '-'
+
+        // Map variants you don't keep to a canonical
+        $map = apply_filters('wpml_to_polylang_fixer_variant_map', [
+            'en-us' => 'en-gb',
+            'en-au' => 'en-gb',
+            'en-ie' => 'en-gb',
+            // add more mappings as needed
+        ]);
+
+        if (isset($map[$code])) {
+            $code = $map[$code];
+        }
+
+        return $code;
+    }
+
+    /**
+     * Ensure PLL language exists or map to canonical
+     *
+     * @param string $slug Language slug
+     * @return string|false Valid language slug or false
+     */
+    public function ensure_pll_language_exists($slug) {
+        if (!$slug || !function_exists('pll_languages_list')) {
+            return false;
+        }
+
+        $slug = $this->canonicalize_slug($slug);
+        $langs = pll_languages_list(['fields' => 'slug']);
+
+        if (in_array($slug, $langs, true)) {
+            return $slug;
+        }
+
+        // If slug not configured, map to default or canonical English
+        // This can be customized via filter
+        $default = apply_filters('wpml_to_polylang_fixer_default_language', 'en-gb');
+
+        // Try to find the default language
+        if (in_array($default, $langs, true)) {
+            return $default;
+        }
+
+        // Fall back to Polylang's default language
+        return pll_default_language();
+    }
+
+    /**
      * Fix wrong language codes in content
      */
     public function fix_wrong_language_codes($pattern = 'pll_%', $batch_size = 100, $offset = 0) {
