@@ -9,14 +9,13 @@ jQuery(document).ready(function($) {
     
     // Set up default properties
     $.extend(window.wpmlFixerAjax, {
-        sessionFixed: {},
-        wooAttributesFixed: 0,
         debugEnabled: false,
         ajaxUrl: '',
         nonce: '',
         nonceName: '',
         strings: {},
-        processingStates: {} // Track processing state for each type
+        processingStates: {}, // Track processing state for each type
+        progressControllers: {} // Cache DOM references for reusable progress UI
     });
     
     // Try to load localization data from multiple sources
@@ -48,7 +47,6 @@ jQuery(document).ready(function($) {
         // Set up default strings
         if (!window.wpmlFixerAjax.strings || Object.keys(window.wpmlFixerAjax.strings).length === 0) {
             window.wpmlFixerAjax.strings = {
-                confirmReset: 'Are you sure you want to reset the session?',
                 confirmFix: 'This will process all items. Continue?',
                 processing: 'Processing...',
                 complete: 'Complete!',
@@ -80,6 +78,7 @@ jQuery(document).ready(function($) {
             // Check initial debug state
             self.debugEnabled = $('#debug-toggle').is(':checked');
             self.toggleDebugConsole();
+            self.cacheProgressControllers();
             
             // Bind debug toggle
             $('#debug-toggle').on('change', function() {
@@ -89,6 +88,165 @@ jQuery(document).ready(function($) {
             });
             
             self.debugLog('WPML Migration Fixer initialized with enhanced progress display');
+        },
+        
+        /**
+         * Cache all progress controllers declared in the markup so they can be reused
+         */
+        cacheProgressControllers: function() {
+            var self = this;
+            self.progressControllers = self.progressControllers || {};
+            $('.progress-wrapper[data-progress-for]').each(function() {
+                var $wrapper = $(this);
+                var type = $wrapper.data('progress-for');
+                if (!type || self.progressControllers[type]) {
+                    return;
+                }
+                self.registerProgressType(type, { wrapper: $wrapper });
+            });
+        },
+        
+        /**
+         * Register a progress UI so it can be controlled programmatically
+         * @param {string} type
+         * @param {Object} elements (optional overrides)
+         * @returns {Object|null}
+         */
+        registerProgressType: function(type, elements) {
+            if (!type) {
+                return null;
+            }
+
+            var self = this;
+            elements = elements || {};
+
+            var $wrapper = elements.wrapper ? $(elements.wrapper) : $('.progress-wrapper[data-progress-for="' + type + '"]');
+            if (!$wrapper.length) {
+                $wrapper = $('#progress-' + type);
+            }
+            if (!$wrapper.length) {
+                if (self.debugEnabled) {
+                    self.debugLog('No progress wrapper found for type "' + type + '"', 'warning');
+                }
+                return null;
+            }
+            $wrapper = $wrapper.first();
+
+            var $button = elements.button ? $(elements.button) : $('[data-progress-trigger="' + type + '"]');
+            if (!$button.length) {
+                $button = $('#btn-' + type);
+            }
+            $button = $button.first();
+            if ($button.length && !$button.data('original-text')) {
+                $button.data('original-text', $.trim($button.text()));
+            }
+
+            var $status = elements.status ? $(elements.status) : $('[data-progress-status="' + type + '"]');
+            if (!$status.length) {
+                $status = $('#status-' + type);
+            }
+            $status = $status.first();
+
+            var controller = {
+                type: type,
+                button: $button,
+                wrapper: $wrapper,
+                bar: elements.bar ? $(elements.bar) : $wrapper.find('[data-progress-role="bar"], .progress-bar').first(),
+                fill: elements.fill ? $(elements.fill) : $wrapper.find('[data-progress-role="fill"], .progress-fill').first(),
+                text: elements.text ? $(elements.text) : $wrapper.find('[data-progress-role="text"], .progress-text').first(),
+                processed: elements.processed ? $(elements.processed) : $wrapper.find('[data-progress-role="processed-count"]').first(),
+                fixed: elements.fixed ? $(elements.fixed) : $wrapper.find('[data-progress-role="fixed-count"]').first(),
+                status: $status,
+                counts: {
+                    processed: 0,
+                    total: 0,
+                    fixed: 0
+                }
+            };
+
+            this.progressControllers[type] = controller;
+
+            if (self.debugEnabled) {
+                self.debugLog('Registered progress controller for type "' + type + '"');
+            }
+
+            return controller;
+        },
+        
+        /**
+         * Get or lazily register a progress controller
+         * @param {string} type
+         * @returns {Object|null}
+         */
+        getProgressController: function(type) {
+            if (!type) {
+                return null;
+            }
+
+            this.progressControllers = this.progressControllers || {};
+            if (!this.progressControllers[type]) {
+                return this.registerProgressType(type);
+            }
+
+            return this.progressControllers[type];
+        },
+        
+        /**
+         * Update processed and fixed counts displayed beneath the progress bar
+         * @param {Object} controller
+         * @param {number} processed
+         * @param {number} total
+         * @param {number} fixed
+         */
+        setProgressCounts: function(controller, processed, total, fixed) {
+            if (!controller) {
+                return;
+            }
+
+            processed = typeof processed === 'number' ? processed : parseInt(processed || 0, 10) || 0;
+            total = typeof total === 'number' ? total : parseInt(total || 0, 10) || 0;
+            fixed = typeof fixed === 'number' ? fixed : parseInt(fixed || 0, 10) || 0;
+
+            controller.counts = {
+                processed: processed,
+                total: total,
+                fixed: fixed
+            };
+
+            if (controller.processed && controller.processed.length) {
+                var processedDisplay = total > 0 ? processed + ' / ' + total : processed;
+                controller.processed.text(processedDisplay);
+            }
+
+            if (controller.fixed && controller.fixed.length) {
+                controller.fixed.text(fixed);
+            }
+        },
+
+        /**
+         * Format the label that appears within the progress bar itself
+         * @param {number} percentage
+         * @param {number} processed
+         * @param {number} total
+         * @param {number} fixed
+         * @returns {string}
+         */
+        formatProgressLabel: function(percentage, processed, total, fixed) {
+            var parts = [];
+            var safePercent = isNaN(percentage) ? 0 : Math.max(0, Math.min(percentage, 100));
+            parts.push(Math.round(safePercent) + '%');
+
+            if (total > 0 || processed > 0 || fixed > 0) {
+                if (total > 0) {
+                    parts.push(processed + ' / ' + total);
+                } else {
+                    parts.push(processed + ' processed');
+                }
+
+                parts.push('Fixed ' + fixed);
+            }
+
+            return parts.join(' | ');
         },
         
         /**
@@ -202,32 +360,8 @@ jQuery(document).ready(function($) {
          */
         toggleAccordion: function(id) {
             $("#" + id).toggleClass("active");
-        },                })
-                .fail(function(xhr, status, error) {
-                    $("#analysis-results").html('<div class="status-message status-error">Analysis failed: ' + error + '</div>');
-                    self.debugLog('❌ Analysis failed: ' + error, 'error');
-                })
-                .always(function() {
-                    $("#btn-analyze").prop("disabled", false);
-                });
-        },                })
-                .fail(function(xhr, status, error) {
-                    $("#diagnosis-results").html('<div class="status-message status-error">Diagnosis failed: ' + error + '</div>');
-                    self.debugLog('❌ Diagnosis failed: ' + error, 'error');
-                })
-                .always(function() {
-                    $("#btn-diagnose").prop("disabled", false);
-                });
-        },                })
-                .fail(function(xhr, status, error) {
-                    $("#verify-results").html('<div class="status-message status-error">Verification failed: ' + error + '</div>');
-                    self.debugLog('❌ Verification failed: ' + error, 'error');
-                })
-                .always(function() {
-                    $("#btn-verify").prop("disabled", false);
-                });
         },
-        
+
         /**
          * NEW: Run comprehensive verification with enhanced timeout handling
          */
@@ -300,6 +434,13 @@ jQuery(document).ready(function($) {
             
             self.debugLog('Starting process: ' + type);
             
+            var controller = self.getProgressController(type);
+            if (!controller) {
+                if (self.debugEnabled) {
+                    self.debugLog('Unable to locate progress UI for type "' + type + '"', 'error');
+                }
+            }
+
             // Initialize processing state
             self.processingStates[type] = {
                 running: true,
@@ -396,48 +537,61 @@ jQuery(document).ready(function($) {
             var self = this;
             data = data || {};
             
-            var button = $('#btn-' + type);
-            var progressWrapper = $('#progress-' + type);
-            var progressBar = $('#progress-bar-' + type);
-            var progressText = $('#progress-text-' + type);
-            var statusDiv = $('#status-' + type);
+            var controller = self.getProgressController(type);
+            if (!controller) {
+                return;
+            }
+
+            var button = controller.button;
+            var progressWrapper = controller.wrapper;
+            var progressFill = controller.fill;
+            var progressText = controller.text;
+            var statusDiv = controller.status;
             
             switch (status) {
                 case 'starting':
-                    button.prop('disabled', true).text(self.strings.processing);
-                    progressWrapper.show();
-                    progressBar.css('width', '0%');
-                    progressText.text('0%');
-                    
+                    if (button && button.length) {
+                        button.prop('disabled', true).text(self.strings.processing);
+                    }
+                    if (progressWrapper && progressWrapper.length) {
+                        progressWrapper.stop(true, true).show();
+                    }
+                    if (progressFill && progressFill.length) {
+                        progressFill.css('width', '0%');
+                    }
+                    self.setProgressCounts(controller, 0, data.total || 0, 0);
+                    if (progressText && progressText.length) {
+                        var initialText = self.formatProgressLabel(0, 0, data.total || 0, 0);
+                        progressText.text(initialText);
+                    }
+
                     if (type === 'translations') {
-                        statusDiv.html('<div class="status-message status-info">Starting 3-phase repair: Corrupted → Posts → Terms</div>');
-                    } else {
+                        if (statusDiv && statusDiv.length) {
+                            statusDiv.html('<div class="status-message status-info">Starting 3-phase repair: Corrupted → Posts → Terms</div>');
+                        }
+                    } else if (statusDiv && statusDiv.length) {
                         statusDiv.html('<div class="status-message status-info">Scanning for items to process...</div>');
                     }
                     break;
                     
                 case 'processing':
-                    var percentage = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
-                    progressBar.css('width', percentage + '%');
-                    
+                    var total = data.total || 0;
+                    var processed = data.processed || 0;
+                    var fixedCount = data.fixed || 0;
+                    var percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+                    if (progressFill && progressFill.length) {
+                        progressFill.css('width', percentage + '%');
+                    }
+
                     // Clear progress text showing current numbers
-                    var progressDisplay = percentage + '%';
-                    if (data.total > 0) {
-                        progressDisplay += ' (' + data.processed + '/' + data.total + ')';
+                    if (progressText && progressText.length) {
+                        progressText.text(self.formatProgressLabel(percentage, processed, total, fixedCount));
                     }
-                    progressText.text(progressDisplay);
-                    
+                    self.setProgressCounts(controller, processed, total, fixedCount);
+
                     // Enhanced status message with clear counts
-                    var statusMessage = '';
-                    if (data.total > 0) {
-                        statusMessage = 'Processing: <strong>' + data.processed + ' of ' + data.total + ' items</strong>';
-                        if (data.fixed !== undefined && data.fixed > 0) {
-                            statusMessage += ' | <strong style="color: #2e7d32;">Fixed: ' + data.fixed + '</strong>';
-                        }
-                    } else {
-                        statusMessage = data.message || 'Processing...';
-                    }
-                    
+                    var statusMessage = data.message || 'Processing...';
+
                     // Special handling for translation groups phases
                     if (type === 'translations' && data.message) {
                         if (data.message.includes('corrupted')) {
@@ -449,22 +603,36 @@ jQuery(document).ready(function($) {
                         }
                     }
                     
-                    statusDiv.html('<div class="status-message status-info">' + statusMessage + '</div>');
+                    if (statusDiv && statusDiv.length) {
+                        statusDiv.html('<div class="status-message status-info">' + statusMessage + '</div>');
+                    }
                     break;
                     
                 case 'complete':
-                    button.prop('disabled', false).text(button.data('original-text') || 'Fix ' + type);
-                    progressBar.css('width', '100%');
-                    progressText.text('Complete!');
-                    
+                    if (button && button.length) {
+                        button.prop('disabled', false).text(button.data('original-text') || 'Fix ' + type);
+                    }
+                    if (progressFill && progressFill.length) {
+                        progressFill.css('width', '100%');
+                    }
+                    var completeTotal = data.total || 0;
+                    var completeProcessed = data.processed || completeTotal;
+                    var completeFixed = data.fixed || 0;
+                    self.setProgressCounts(controller, completeProcessed, completeTotal || completeProcessed, completeFixed);
+                    if (progressText && progressText.length) {
+                        var completePercentage = completeTotal > 0 ? 100 : (completeProcessed > 0 ? 100 : 0);
+                        progressText.text(self.formatProgressLabel(completePercentage, completeProcessed, completeTotal || completeProcessed, completeFixed));
+                    }
+
                     // Clear completion message
                     var completeMessage = '✅ <strong>Processing Complete!</strong>';
-                    if (data.total > 0) {
-                        completeMessage += '<br>Processed: <strong>' + data.total + ' items</strong>';
+                    if (completeTotal > 0 || completeProcessed > 0) {
+                        var processedSummary = completeTotal > 0 ? completeTotal : completeProcessed;
+                        completeMessage += '<br>Processed: <strong>' + processedSummary + ' items</strong>';
                         if (data.fixed !== undefined) {
-                            completeMessage += ' | Fixed: <strong style="color: #2e7d32;">' + data.fixed + ' items</strong>';
+                            completeMessage += ' | Fixed: <strong style="color: #2e7d32;">' + completeFixed + ' items</strong>';
                             
-                            if (data.fixed === 0) {
+                            if (completeFixed === 0) {
                                 completeMessage += ' <em>(All items already had correct language assignments)</em>';
                             }
                         }
@@ -472,26 +640,40 @@ jQuery(document).ready(function($) {
                         completeMessage += '<br><em>No items needed processing</em>';
                     }
                     
-                    statusDiv.html('<div class="status-message status-success">' + completeMessage + '</div>');
+                    if (statusDiv && statusDiv.length) {
+                        statusDiv.html('<div class="status-message status-success">' + completeMessage + '</div>');
+                    }
                     
                     // Hide progress after a longer delay so user can read the results
-                    setTimeout(function() {
-                        progressWrapper.fadeOut();
-                    }, 5000);
+                    if (progressWrapper && progressWrapper.length) {
+                        setTimeout(function() {
+                            progressWrapper.fadeOut();
+                        }, 5000);
+                    }
                     break;
                     
                 case 'error':
-                    button.prop('disabled', false).text(button.data('original-text') || 'Fix ' + type);
-                    progressBar.css('width', '0%');
-                    progressText.text('Error');
+                    if (button && button.length) {
+                        button.prop('disabled', false).text(button.data('original-text') || 'Fix ' + type);
+                    }
+                    if (progressFill && progressFill.length) {
+                        progressFill.css('width', '0%');
+                    }
+                    if (progressText && progressText.length) {
+                        progressText.text(self.strings.error || 'Error');
+                    }
                     
                     var errorMessage = '❌ <strong>Error occurred</strong>';
                     if (data.message) {
                         errorMessage += '<br>' + data.message;
                     }
                     
-                    statusDiv.html('<div class="status-message status-error">' + errorMessage + '</div>');
-                    progressWrapper.fadeOut();
+                    if (statusDiv && statusDiv.length) {
+                        statusDiv.html('<div class="status-message status-error">' + errorMessage + '</div>');
+                    }
+                    if (progressWrapper && progressWrapper.length) {
+                        progressWrapper.fadeOut();
+                    }
                     break;
             }
         },
@@ -545,15 +727,29 @@ jQuery(document).ready(function($) {
             
             errorHtml += '</div>';
             return errorHtml;
-        },;
-                this.processingStates = {}; // Reset processing states
-                var requestData = this.createRequestData("wpml_fixer_ajax_reset_session");
-                $.post(this.ajaxUrl, requestData);
-                this.debugLog('Session reset', 'info');
-            }
-        }
+        },
+
     });
-    
+
+    // Preserve reference so later assignments merge instead of replace
+    var fixerInstance = window.wpmlFixerAjax;
+    try {
+        Object.defineProperty(window, 'wpmlFixerAjax', {
+            configurable: true,
+            get: function() {
+                return fixerInstance;
+            },
+            set: function(value) {
+                if (value && typeof value === 'object') {
+                    $.extend(fixerInstance, value);
+                }
+            }
+        });
+    } catch (e) {
+        // Fallback for environments that do not support defineProperty on window
+        window.wpmlFixerAjax = fixerInstance;
+    }
+
     // Store original button text for restoration
     $('[id^="btn-"]').each(function() {
         $(this).data('original-text', $(this).text());
