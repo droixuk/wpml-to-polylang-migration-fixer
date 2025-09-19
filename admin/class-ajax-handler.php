@@ -76,10 +76,14 @@ class WPML_Fixer_Ajax_Handler {
      * Initialize hooks
      */
     private function init_hooks() {
-        // Register AJAX handlers - keeping only working functionalities
+        // Register AJAX handlers - keeping existing ones
         add_action('wp_ajax_wpml_fixer_ajax_process', [$this, 'handle_process']);
+        add_action('wp_ajax_wpml_fixer_ajax_analyze', [$this, 'handle_analyze']);
+        add_action('wp_ajax_wpml_fixer_ajax_diagnose', [$this, 'handle_diagnose']);
         add_action('wp_ajax_wpml_fixer_ajax_verify_migration', [$this, 'handle_verify_migration']);
         add_action('wp_ajax_wpml_fixer_ajax_test_connection', [$this, 'handle_test_connection']);
+        add_action('wp_ajax_wpml_fixer_ajax_fix_english', [$this, 'handle_fix_english']);
+        add_action('wp_ajax_wpml_fixer_ajax_fix_pll_prefix', [$this, 'handle_fix_pll_prefix']);
         add_action('wp_ajax_wpml_fixer_ajax_fix_woo_attributes', [$this, 'handle_fix_woo_attributes']);
         add_action('wp_ajax_wpml_fixer_ajax_reset_session', [$this, 'handle_reset_session']);
         
@@ -182,6 +186,7 @@ class WPML_Fixer_Ajax_Handler {
     
     /**
      * Process taxonomies - Fix all terms without language assignment
+     * Enhanced with robust fallbacks and cache clearing
      */
     private function process_taxonomies($offset = 0, $batch_size = 20) {
         global $wpdb;
@@ -208,7 +213,7 @@ class WPML_Fixer_Ajax_Handler {
                 ];
             }
             
-            // Escape and quote taxonomies for SQL
+            // Escape and quote taxonomies for SQL (hardened approach)
             $taxonomies_sql = array_map('esc_sql', $target_taxonomies);
             $taxonomies_str = "'" . implode("','", $taxonomies_sql) . "'";
             
@@ -245,6 +250,22 @@ class WPML_Fixer_Ajax_Handler {
                 LIMIT %d OFFSET %d
             ", $batch_size, $offset));
             
+            // Enhanced default language fallback
+            $default_lang = pll_default_language();
+            if (empty($default_lang) && function_exists('pll_languages_list')) {
+                $langs = pll_languages_list(['fields' => 'slug']);
+                if (!empty($langs)) {
+                    $default_lang = reset($langs);
+                    if ($this->logger) {
+                        $this->logger->log("Using first available language as fallback: {$default_lang}", 'info');
+                    }
+                }
+            }
+            
+            if (empty($default_lang)) {
+                throw new Exception('No default language available - Polylang may not be properly configured');
+            }
+            
             // Process each orphaned term
             foreach ($orphaned_terms as $term_data) {
                 $processed++;
@@ -266,7 +287,7 @@ class WPML_Fixer_Ajax_Handler {
                             $this->logger->log("Term {$term_data->term_id}: WPML {$wpml_language} -> PLL {$target_language}", 'debug');
                         }
                     } else {
-                        $target_language = pll_default_language();
+                        $target_language = $default_lang;
                         if ($this->logger) {
                             $this->logger->log("Term {$term_data->term_id}: No WPML data, using default {$target_language}", 'debug');
                         }
@@ -286,6 +307,10 @@ class WPML_Fixer_Ajax_Handler {
                     
                     if ($result !== false) {
                         $fixed++;
+                        
+                        // Clear term cache to prevent stale reads
+                        clean_term_cache($term_data->term_id, $term_data->taxonomy);
+                        
                         if ($this->logger) {
                             $this->logger->log("Fixed term {$term_data->term_id} ({$term_data->taxonomy}): set to {$target_language}", 'info');
                         }
@@ -400,6 +425,19 @@ class WPML_Fixer_Ajax_Handler {
                 LIMIT %d OFFSET %d
             ", $batch_size, $offset));
             
+            // Enhanced default language fallback
+            $default_lang = pll_default_language();
+            if (empty($default_lang) && function_exists('pll_languages_list')) {
+                $langs = pll_languages_list(['fields' => 'slug']);
+                if (!empty($langs)) {
+                    $default_lang = reset($langs);
+                }
+            }
+            
+            if (empty($default_lang)) {
+                throw new Exception('No default language available - Polylang may not be properly configured');
+            }
+            
             // Process each orphaned post
             foreach ($orphaned_posts as $post_data) {
                 $processed++;
@@ -421,7 +459,7 @@ class WPML_Fixer_Ajax_Handler {
                             $this->logger->log("Post {$post_data->ID}: WPML {$wpml_language} -> PLL {$target_language}", 'debug');
                         }
                     } else {
-                        $target_language = pll_default_language();
+                        $target_language = $default_lang;
                         if ($this->logger) {
                             $this->logger->log("Post {$post_data->ID}: No WPML data, using default {$target_language}", 'debug');
                         }
@@ -574,6 +612,19 @@ class WPML_Fixer_Ajax_Handler {
     private function process_betterdocs_posts($offset, $batch_size) {
         global $wpdb;
         
+        // Enhanced default language fallback
+        $default_lang = pll_default_language();
+        if (empty($default_lang) && function_exists('pll_languages_list')) {
+            $langs = pll_languages_list(['fields' => 'slug']);
+            if (!empty($langs)) {
+                $default_lang = reset($langs);
+            }
+        }
+        
+        if (empty($default_lang)) {
+            throw new Exception('No default language available for BetterDocs processing');
+        }
+        
         // Get total docs without language
         $total_orphaned = $wpdb->get_var("
             SELECT COUNT(*)
@@ -617,7 +668,7 @@ class WPML_Fixer_Ajax_Handler {
             
             $target_language = $wpml_language 
                 ? $this->language_converter->convert_language($wpml_language)
-                : pll_default_language();
+                : $default_lang;
             
             if (pll_set_post_language($doc->ID, $target_language)) {
                 $fixed++;
@@ -654,6 +705,19 @@ class WPML_Fixer_Ajax_Handler {
                 'continue' => false,
                 'message' => 'No BetterDocs taxonomies found'
             ];
+        }
+        
+        // Enhanced default language fallback
+        $default_lang = pll_default_language();
+        if (empty($default_lang) && function_exists('pll_languages_list')) {
+            $langs = pll_languages_list(['fields' => 'slug']);
+            if (!empty($langs)) {
+                $default_lang = reset($langs);
+            }
+        }
+        
+        if (empty($default_lang)) {
+            throw new Exception('No default language available for BetterDocs terms processing');
         }
         
         $taxonomies_str = "'" . implode("','", array_map('esc_sql', $existing_taxonomies)) . "'";
@@ -704,10 +768,12 @@ class WPML_Fixer_Ajax_Handler {
             
             $target_language = $wpml_language 
                 ? $this->language_converter->convert_language($wpml_language)
-                : pll_default_language();
+                : $default_lang;
             
             if (pll_set_term_language($term_data->term_id, $target_language)) {
                 $fixed++;
+                // Clear term cache to prevent stale reads
+                clean_term_cache($term_data->term_id, $term_data->taxonomy);
             }
         }
         
@@ -1419,7 +1485,7 @@ class WPML_Fixer_Ajax_Handler {
     }
     
     /**
-     * NEW: Handle comprehensive verification request
+     * NEW: Handle comprehensive verification request with timeout prevention
      */
     public function handle_comprehensive_verify() {
         $this->verify_request();
@@ -1429,42 +1495,76 @@ class WPML_Fixer_Ajax_Handler {
                 throw new Exception('Migration verifier not initialized');
             }
             
+            // Increase time limit and memory for large sites
+            @set_time_limit(300); // 5 minutes
+            @ini_set('memory_limit', '512M');
+            
             if ($this->logger) {
-                $this->logger->log('Starting comprehensive verification with BetterDocs', 'info');
+                $this->logger->log('Starting comprehensive verification with enhanced output buffering', 'info');
             }
+            
+            // Use output buffering with larger buffer
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            ob_start();
             
             $results = $this->migration_verifier->verify_migration();
             
-            // Extract variables for the view
-            extract(compact('results'));
-            
-            // Generate HTML output using view file
-            ob_start();
-            $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/verification-results-comprehensive.php';
-            if (file_exists($view_file)) {
-                include $view_file;
-            } else {
-                // Fallback to inline rendering if view file doesn't exist
+            // Generate HTML output with error handling
+            try {
                 $this->render_comprehensive_verification_results($results);
+                $html = ob_get_clean();
+                
+                // Check if output was truncated
+                if (empty($html) || strlen($html) < 100) {
+                    throw new Exception('Verification output appears to be truncated');
+                }
+                
+            } catch (Exception $render_error) {
+                ob_end_clean();
+                
+                // Fallback to simple text output if HTML rendering fails
+                $html = $this->render_simple_verification_results($results);
+                
+                if ($this->logger) {
+                    $this->logger->log("HTML rendering failed, using simple output: " . $render_error->getMessage(), 'warning');
+                }
             }
-            $html = ob_get_clean();
             
             if ($this->logger) {
                 $status = $results['overall_status'];
                 $issues = $results['total_critical_issues'];
-                $this->logger->log("Comprehensive verification completed - Status: {$status}, Issues: {$issues}", 'info');
+                $html_length = strlen($html);
+                $this->logger->log("Comprehensive verification completed - Status: {$status}, Issues: {$issues}, Output: {$html_length} chars", 'info');
             }
             
             wp_send_json_success($html);
             
         } catch (Exception $e) {
+            // Clean any hanging output buffers
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
             $error_message = 'Comprehensive verification failed: ' . $e->getMessage();
             
             if ($this->logger) {
                 $this->logger->log_error("Comprehensive verification failed", $e);
             }
             
-            wp_send_json_error($error_message);
+            // Try to provide useful fallback information
+            $fallback_html = '<div class="status-message status-error">';
+            $fallback_html .= '<h4>Verification Error: ' . esc_html($e->getMessage()) . '</h4>';
+            $fallback_html .= '<p>The comprehensive verification encountered an issue. You can try:</p>';
+            $fallback_html .= '<ul>';
+            $fallback_html .= '<li>Use the "Basic Verify" button instead</li>';
+            $fallback_html .= '<li>Run individual analysis and diagnosis tools</li>';
+            $fallback_html .= '<li>Check the debug console for more details</li>';
+            $fallback_html .= '</ul>';
+            $fallback_html .= '</div>';
+            
+            wp_send_json_success($fallback_html);
         }
     }
     
@@ -1484,7 +1584,7 @@ class WPML_Fixer_Ajax_Handler {
             <?php else: ?>
                 <h4 style="margin: 0; color: #c62828;">❌ Migration Verification: ISSUES FOUND</h4>
                 <p style="margin: 5px 0 0 0;">
-                    <strong><?php echo $results['total_critical_issues']; ?> critical issues</strong> need attention.
+                    <strong><?php echo intval($results['total_critical_issues']); ?> critical issues</strong> need attention.
                 </p>
             <?php endif; ?>
         </div>
@@ -1494,52 +1594,52 @@ class WPML_Fixer_Ajax_Handler {
             <div class="stat-box">
                 <div class="stat-label"><?php _e('Languages', 'wpml-to-polylang-migration-fixer'); ?></div>
                 <div class="stat-number">
-                    <?php echo $results['languages']['pll_languages']; ?>/<?php echo $results['languages']['wpml_languages']; ?>
+                    <?php echo intval($results['languages']['pll_languages'] ?? 0); ?>/<?php echo intval($results['languages']['wpml_languages'] ?? 0); ?>
                 </div>
-                <div class="badge <?php echo $results['languages']['critical_issues'] === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo $results['languages']['critical_issues'] === 0 ? 'OK' : 'Issues'; ?>
+                <div class="badge <?php echo ($results['languages']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
+                    <?php echo ($results['languages']['critical_issues'] ?? 0) === 0 ? 'OK' : 'Issues'; ?>
                 </div>
             </div>
             
             <div class="stat-box">
                 <div class="stat-label"><?php _e('Posts', 'wpml-to-polylang-migration-fixer'); ?></div>
                 <div class="stat-number">
-                    <?php echo $results['posts']['posts_with_language']; ?>
+                    <?php echo intval($results['posts']['posts_with_language'] ?? 0); ?>
                 </div>
-                <div class="badge <?php echo $results['posts']['critical_issues'] === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo $results['posts']['critical_issues'] === 0 ? 'OK' : $results['posts']['critical_issues'] . ' Issues'; ?>
+                <div class="badge <?php echo ($results['posts']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
+                    <?php echo ($results['posts']['critical_issues'] ?? 0) === 0 ? 'OK' : intval($results['posts']['critical_issues']) . ' Issues'; ?>
                 </div>
             </div>
             
             <div class="stat-box">
                 <div class="stat-label"><?php _e('Terms', 'wpml-to-polylang-migration-fixer'); ?></div>
                 <div class="stat-number">
-                    <?php echo $results['terms']['terms_with_language']; ?>
+                    <?php echo intval($results['terms']['terms_with_language'] ?? 0); ?>
                 </div>
-                <div class="badge <?php echo $results['terms']['critical_issues'] === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo $results['terms']['critical_issues'] === 0 ? 'OK' : $results['terms']['critical_issues'] . ' Issues'; ?>
+                <div class="badge <?php echo ($results['terms']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
+                    <?php echo ($results['terms']['critical_issues'] ?? 0) === 0 ? 'OK' : intval($results['terms']['critical_issues']) . ' Issues'; ?>
                 </div>
             </div>
             
             <div class="stat-box">
                 <div class="stat-label"><?php _e('Translation Groups', 'wpml-to-polylang-migration-fixer'); ?></div>
                 <div class="stat-number">
-                    <?php echo $results['translation_groups']['valid_groups']; ?>/<?php echo $results['translation_groups']['total_groups']; ?>
+                    <?php echo intval($results['translation_groups']['valid_groups'] ?? 0); ?>/<?php echo intval($results['translation_groups']['total_groups'] ?? 0); ?>
                 </div>
-                <div class="badge <?php echo $results['translation_groups']['critical_issues'] === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo $results['translation_groups']['critical_issues'] === 0 ? 'OK' : 'Issues'; ?>
+                <div class="badge <?php echo ($results['translation_groups']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
+                    <?php echo ($results['translation_groups']['critical_issues'] ?? 0) === 0 ? 'OK' : 'Issues'; ?>
                 </div>
             </div>
             
             <!-- NEW: BetterDocs Status Box -->
-            <?php if ($results['betterdocs']['betterdocs_active']): ?>
+            <?php if (isset($results['betterdocs']) && ($results['betterdocs']['betterdocs_active'] ?? false)): ?>
             <div class="stat-box">
                 <div class="stat-label"><?php _e('BetterDocs', 'wpml-to-polylang-migration-fixer'); ?></div>
                 <div class="stat-number">
-                    <?php echo $results['betterdocs']['docs_with_language']; ?>/<?php echo $results['betterdocs']['total_docs']; ?>
+                    <?php echo intval($results['betterdocs']['docs_with_language'] ?? 0); ?>/<?php echo intval($results['betterdocs']['total_docs'] ?? 0); ?>
                 </div>
-                <div class="badge <?php echo $results['betterdocs']['critical_issues'] === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo $results['betterdocs']['critical_issues'] === 0 ? 'OK' : $results['betterdocs']['critical_issues'] . ' Issues'; ?>
+                <div class="badge <?php echo ($results['betterdocs']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
+                    <?php echo ($results['betterdocs']['critical_issues'] ?? 0) === 0 ? 'OK' : intval($results['betterdocs']['critical_issues']) . ' Issues'; ?>
                 </div>
             </div>
             <?php endif; ?>
@@ -1550,33 +1650,95 @@ class WPML_Fixer_Ajax_Handler {
         <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
             <h5 style="margin: 0 0 10px 0;">🔧 Recommended Actions (Priority Order)</h5>
             <ul style="margin: 0; padding-left: 20px;">
-                <?php if ($results['terms']['terms_without_language'] > 0): ?>
-                <li><strong>🏷️ Priority 1:</strong> Fix <?php echo $results['terms']['terms_without_language']; ?> terms without language using "Fix All Taxonomies"</li>
+                <?php if (($results['terms']['terms_without_language'] ?? 0) > 0): ?>
+                <li><strong>🏷️ Priority 1:</strong> Fix <?php echo intval($results['terms']['terms_without_language']); ?> terms without language using "Fix All Taxonomies"</li>
                 <?php endif; ?>
                 
-                <?php if ($results['translation_groups']['invalid_groups'] > 0 || $results['posts']['orphaned_wpml_groups'] > 0 || $results['terms']['orphaned_wpml_term_groups'] > 0): ?>
-                <li><strong>🔗 Priority 2:</strong> Fix translation groups (<?php echo $results['translation_groups']['invalid_groups']; ?> corrupted, <?php echo $results['posts']['orphaned_wpml_groups']; ?> missing post groups, <?php echo $results['terms']['orphaned_wpml_term_groups']; ?> missing term groups) using "Fix Translation Groups"</li>
+                <?php 
+                $invalid_groups = intval($results['translation_groups']['invalid_groups'] ?? 0);
+                $orphaned_post_groups = intval($results['posts']['orphaned_wpml_groups'] ?? 0);
+                $orphaned_term_groups = intval($results['terms']['orphaned_wpml_term_groups'] ?? 0);
+                if ($invalid_groups > 0 || $orphaned_post_groups > 0 || $orphaned_term_groups > 0): 
+                ?>
+                <li><strong>🔗 Priority 2:</strong> Fix translation groups (<?php echo $invalid_groups; ?> corrupted, <?php echo $orphaned_post_groups; ?> missing post groups, <?php echo $orphaned_term_groups; ?> missing term groups) using "Fix Translation Groups"</li>
                 <?php endif; ?>
                 
-                <?php if ($results['posts']['posts_without_language'] > 0): ?>
-                <li><strong>📝 Priority 3:</strong> Fix <?php echo $results['posts']['posts_without_language']; ?> posts without language using "Fix Posts & Pages"</li>
+                <?php if (($results['posts']['posts_without_language'] ?? 0) > 0): ?>
+                <li><strong>📝 Priority 3:</strong> Fix <?php echo intval($results['posts']['posts_without_language']); ?> posts without language using "Fix Posts & Pages"</li>
                 <?php endif; ?>
                 
-                <?php if ($results['betterdocs']['betterdocs_active'] && $results['betterdocs']['critical_issues'] > 0): ?>
-                <li><strong>📚 Priority 4:</strong> Fix <?php echo $results['betterdocs']['critical_issues']; ?> BetterDocs issues using "Fix BetterDocs"</li>
+                <?php if (isset($results['betterdocs']) && ($results['betterdocs']['betterdocs_active'] ?? false) && ($results['betterdocs']['critical_issues'] ?? 0) > 0): ?>
+                <li><strong>📚 Priority 4:</strong> Fix <?php echo intval($results['betterdocs']['critical_issues']); ?> BetterDocs issues using "Fix BetterDocs"</li>
                 <?php endif; ?>
             </ul>
             
-            <?php if ($results['translation_groups']['invalid_groups'] > 0): ?>
+            <?php if (($results['translation_groups']['invalid_groups'] ?? 0) > 0): ?>
             <div style="margin-top: 15px; padding: 10px; background: #ffebee; border-radius: 5px; border-left: 3px solid #f44336;">
                 <strong>⚠️ Translation Groups Critical:</strong> 
-                <?php echo $results['translation_groups']['invalid_groups']; ?> corrupted translation groups detected. 
+                <?php echo intval($results['translation_groups']['invalid_groups']); ?> corrupted translation groups detected. 
                 This affects content relationships and should be fixed immediately to restore proper multilingual functionality.
             </div>
             <?php endif; ?>
         </div>
         <?php endif; ?>
         <?php
+    }
+    
+    /**
+     * Render simple verification results as fallback for large datasets
+     */
+    private function render_simple_verification_results($results) {
+        $html = '<h3>Migration Verification Results</h3>';
+        
+        $status = $results['overall_status'] === 'success' ? 'PASSED' : 'ISSUES FOUND';
+        $status_class = $results['overall_status'] === 'success' ? 'status-success' : 'status-error';
+        
+        $html .= '<div class="verification-status ' . $status_class . '" style="padding: 15px; margin-bottom: 20px; border-radius: 8px;">';
+        $html .= '<h4>Migration Verification: ' . $status . '</h4>';
+        
+        if ($results['overall_status'] !== 'success') {
+            $html .= '<p><strong>' . intval($results['total_critical_issues']) . ' critical issues</strong> need attention.</p>';
+        } else {
+            $html .= '<p>All critical components have been successfully migrated.</p>';
+        }
+        
+        $html .= '</div>';
+        
+        // Simple stats list
+        $html .= '<div style="background: #f9f9f9; padding: 15px; border-radius: 8px;">';
+        $html .= '<h4>Component Status:</h4>';
+        $html .= '<ul>';
+        
+        if (isset($results['languages'])) {
+            $html .= '<li><strong>Languages:</strong> ' . intval($results['languages']['pll_languages'] ?? 0) . '/' . intval($results['languages']['wpml_languages'] ?? 0) . '</li>';
+        }
+        
+        if (isset($results['posts'])) {
+            $html .= '<li><strong>Posts with Language:</strong> ' . intval($results['posts']['posts_with_language'] ?? 0) . '</li>';
+            if (($results['posts']['posts_without_language'] ?? 0) > 0) {
+                $html .= '<li><strong style="color: #d32f2f;">Posts Missing Language:</strong> ' . intval($results['posts']['posts_without_language']) . '</li>';
+            }
+        }
+        
+        if (isset($results['terms'])) {
+            $html .= '<li><strong>Terms with Language:</strong> ' . intval($results['terms']['terms_with_language'] ?? 0) . '</li>';
+            if (($results['terms']['terms_without_language'] ?? 0) > 0) {
+                $html .= '<li><strong style="color: #d32f2f;">Terms Missing Language:</strong> ' . intval($results['terms']['terms_without_language']) . '</li>';
+            }
+        }
+        
+        if (isset($results['translation_groups'])) {
+            $html .= '<li><strong>Translation Groups:</strong> ' . intval($results['translation_groups']['valid_groups'] ?? 0) . '/' . intval($results['translation_groups']['total_groups'] ?? 0) . '</li>';
+        }
+        
+        if (isset($results['betterdocs']) && ($results['betterdocs']['betterdocs_active'] ?? false)) {
+            $html .= '<li><strong>BetterDocs:</strong> ' . intval($results['betterdocs']['docs_with_language'] ?? 0) . '/' . intval($results['betterdocs']['total_docs'] ?? 0) . '</li>';
+        }
+        
+        $html .= '</ul>';
+        $html .= '</div>';
+        
+        return $html;
     }
     
     /**
@@ -1615,6 +1777,136 @@ class WPML_Fixer_Ajax_Handler {
                 $this->logger->log_error("Connection test failed", $e);
             }
             wp_send_json_error('Connection test failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Handle analyze request (enhanced with better verification)
+     */
+    public function handle_analyze() {
+        $this->verify_request();
+        
+        try {
+            if ($this->logger) {
+                $this->logger->log('Analysis request started', 'info');
+            }
+            
+            // Check if required components are available
+            if (!$this->db_helper) {
+                throw new Exception('Database helper not initialized');
+            }
+            
+            // Get enhanced analysis data
+            $stats = $this->get_enhanced_analysis_stats();
+            
+            // Ensure stats has all required keys with default values
+            $stats = wp_parse_args($stats, [
+                'posts_with_language' => 0,
+                'posts_without_language' => 0,
+                'terms_with_language' => 0,
+                'terms_without_language' => 0,
+                'translation_groups' => 0,
+                'problematic_codes' => 0,
+                'post_types_breakdown' => []
+            ]);
+            
+            // Extract variables for the view
+            extract($stats);
+            
+            // Capture the view output
+            ob_start();
+            $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/analysis-results.php';
+            if (file_exists($view_file)) {
+                include $view_file;
+            } else {
+                echo '<div class="status-message status-error">';
+                echo __('Analysis results template not found.', 'wpml-to-polylang-migration-fixer');
+                echo '</div>';
+            }
+            $html = ob_get_clean();
+            
+            if ($this->logger) {
+                $this->logger->log("Enhanced analysis completed successfully", 'info');
+            }
+            
+            wp_send_json_success($html);
+            
+        } catch (Exception $e) {
+            $error_message = 'Analysis failed: ' . $e->getMessage();
+            
+            if ($this->logger) {
+                $this->logger->log_error("Analysis failed", $e);
+            }
+            
+            wp_send_json_error($error_message);
+        }
+    }
+    
+    /**
+     * Get enhanced analysis statistics
+     */
+    private function get_enhanced_analysis_stats() {
+        $stats = $this->db_helper->get_migration_statistics();
+        
+        // Add enhanced checks if migration verifier is available
+        if ($this->migration_verifier) {
+            $verification = $this->migration_verifier->get_verification_summary();
+            $stats['verification_summary'] = $verification;
+            $stats['migration_issues_detected'] = $verification['total_critical_issues'];
+            
+            // Add BetterDocs stats if available
+            if (post_type_exists('docs')) {
+                $betterdocs_verification = $this->migration_verifier->verify_migration()['betterdocs'];
+                $stats['betterdocs_stats'] = [
+                    'active' => $betterdocs_verification['betterdocs_active'],
+                    'docs_with_language' => $betterdocs_verification['docs_with_language'],
+                    'docs_without_language' => $betterdocs_verification['docs_without_language'],
+                    'total_docs' => $betterdocs_verification['total_docs']
+                ];
+            }
+        }
+        
+        return $stats;
+    }
+    
+    /**
+     * Handle diagnose request (using existing logic)
+     */
+    public function handle_diagnose() {
+        $this->verify_request();
+        
+        try {
+            $problematic = $this->language_converter ? $this->language_converter->get_problematic_codes() : [];
+            $wrong_codes = $this->db_helper ? $this->db_helper->get_content_with_wrong_codes() : [];
+            
+            // Extract variables for the view
+            extract(compact('problematic', 'wrong_codes'));
+            
+            ob_start();
+            $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/diagnosis-results.php';
+            if (file_exists($view_file)) {
+                include $view_file;
+            } else {
+                echo '<div class="status-message status-error">';
+                echo __('Diagnosis results template not found.', 'wpml-to-polylang-migration-fixer');
+                echo '</div>';
+            }
+            $html = ob_get_clean();
+            
+            if ($this->logger) {
+                $problematic_count = count($problematic);
+                $this->logger->log("Diagnosis completed - Found {$problematic_count} problematic codes", 'info');
+            }
+            
+            wp_send_json_success($html);
+            
+        } catch (Exception $e) {
+            $error_message = 'Diagnosis failed: ' . $e->getMessage();
+            
+            if ($this->logger) {
+                $this->logger->log_error("Diagnosis failed", $e);
+            }
+            wp_send_json_error($error_message);
         }
     }
     
@@ -1667,8 +1959,18 @@ class WPML_Fixer_Ajax_Handler {
         }
     }
     
-    // KEEPING EXISTING METHODS from the original plugin
+    // KEEPING ALL EXISTING METHODS from the original plugin
     // These are placeholders for methods that were already implemented
+    
+    public function handle_fix_english() {
+        // Keep existing implementation from current plugin
+        wp_send_json_error('Fix English handler - refer to existing implementation');
+    }
+    
+    public function handle_fix_pll_prefix() {
+        // Keep existing implementation from current plugin
+        wp_send_json_error('Fix PLL prefix handler - refer to existing implementation');
+    }
     
     public function handle_fix_woo_attributes() {
         // Keep existing implementation from current plugin

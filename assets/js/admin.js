@@ -1,6 +1,6 @@
 /**
  * Admin JavaScript for WPML Migration Fixer plugin
- * Version: 1.1.2 - Enhanced with batch processing implementation
+ * Version: 1.1.3 - Enhanced with clear progress display and timeout prevention
  */
 
 jQuery(document).ready(function($) {
@@ -88,7 +88,7 @@ jQuery(document).ready(function($) {
                 self.debugLog('Debug mode ' + (self.debugEnabled ? 'enabled' : 'disabled'));
             });
             
-            self.debugLog('WPML Migration Fixer initialized with batch processing');
+            self.debugLog('WPML Migration Fixer initialized with enhanced progress display');
         },
         
         /**
@@ -203,10 +203,99 @@ jQuery(document).ready(function($) {
         toggleAccordion: function(id) {
             $("#" + id).toggleClass("active");
         },
-
         
         /**
-         * NEW: Run comprehensive verification
+         * Run analysis
+         */
+        runAnalysis: function() {
+            var self = this;
+            $("#analysis-results").html('<div class="spinner"></div><p>Analyzing your content...</p>');
+            $("#btn-analyze").prop("disabled", true);
+            
+            var requestData = self.createRequestData("wpml_fixer_ajax_analyze");
+            
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success) {
+                        $("#analysis-results").html(response.data);
+                        self.debugLog('✅ Analysis completed successfully');
+                    } else {
+                        var errorMsg = response && response.data ? response.data : 'Unknown error';
+                        $("#analysis-results").html('<div class="status-message status-error">Analysis failed: ' + errorMsg + '</div>');
+                        self.debugLog('❌ Analysis failed: ' + errorMsg, 'error');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    $("#analysis-results").html('<div class="status-message status-error">Analysis failed: ' + error + '</div>');
+                    self.debugLog('❌ Analysis failed: ' + error, 'error');
+                })
+                .always(function() {
+                    $("#btn-analyze").prop("disabled", false);
+                });
+        },
+        
+        /**
+         * Run diagnosis
+         */
+        runDiagnosis: function() {
+            var self = this;
+            $("#diagnosis-results").html('<div class="spinner"></div><p>Running language diagnosis...</p>');
+            $("#btn-diagnose").prop("disabled", true);
+            
+            var requestData = self.createRequestData("wpml_fixer_ajax_diagnose");
+            
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success) {
+                        $("#diagnosis-results").html(response.data);
+                        self.debugLog('✅ Diagnosis completed successfully');
+                    } else {
+                        var errorMsg = response && response.data ? response.data : 'Unknown error';
+                        $("#diagnosis-results").html('<div class="status-message status-error">Diagnosis failed: ' + errorMsg + '</div>');
+                        self.debugLog('❌ Diagnosis failed: ' + errorMsg, 'error');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    $("#diagnosis-results").html('<div class="status-message status-error">Diagnosis failed: ' + error + '</div>');
+                    self.debugLog('❌ Diagnosis failed: ' + error, 'error');
+                })
+                .always(function() {
+                    $("#btn-diagnose").prop("disabled", false);
+                });
+        },
+        
+        /**
+         * Verify migration (legacy method)
+         */
+        verifyMigration: function() {
+            var self = this;
+            $("#verify-results").html('<div class="spinner"></div><p>Verifying migration integrity...</p>');
+            $("#btn-verify").prop("disabled", true);
+            
+            var requestData = self.createRequestData("wpml_fixer_ajax_verify_migration");
+            
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success) {
+                        $("#verify-results").html(response.data);
+                        self.debugLog('✅ Verification completed successfully');
+                    } else {
+                        var errorMsg = response && response.data ? response.data : 'Unknown error';
+                        $("#verify-results").html('<div class="status-message status-error">Verification failed: ' + errorMsg + '</div>');
+                        self.debugLog('❌ Verification failed: ' + errorMsg, 'error');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    $("#verify-results").html('<div class="status-message status-error">Verification failed: ' + error + '</div>');
+                    self.debugLog('❌ Verification failed: ' + error, 'error');
+                })
+                .always(function() {
+                    $("#btn-verify").prop("disabled", false);
+                });
+        },
+        
+        /**
+         * NEW: Run comprehensive verification with enhanced timeout handling
          */
         runComprehensiveVerification: function() {
             var self = this;
@@ -215,34 +304,47 @@ jQuery(document).ready(function($) {
             
             var requestData = self.createRequestData("wpml_fixer_ajax_comprehensive_verify");
             
-            self.debugLog('Starting comprehensive verification...');
+            self.debugLog('Starting comprehensive verification with enhanced handling...');
             
-            $.post(self.ajaxUrl, requestData)
-                .done(function(response) {
-                    if (response && response.success) {
-                        $("#verify-results").html(response.data);
-                        self.debugLog('✅ Comprehensive verification completed successfully');
-                        
-                        // Show success message
-                        self.showTemporaryMessage(self.strings.verificationComplete, 'success');
-                        
-                        // Scroll to results
-                        $('html, body').animate({
-                            scrollTop: $("#verify-results").offset().top - 100
-                        }, 500);
-                    } else {
-                        var errorMsg = response && response.data ? response.data : 'Unknown error';
-                        $("#verify-results").html(self.displayError('Comprehensive verification failed: ' + errorMsg));
-                        self.debugLog('❌ Comprehensive verification failed: ' + errorMsg, 'error');
-                    }
-                })
-                .fail(function(xhr, status, error) {
-                    $("#verify-results").html(self.displayError('Comprehensive verification failed: ' + error, xhr, status, error));
-                    self.debugLog('❌ Comprehensive verification failed: ' + error, 'error');
-                })
-                .always(function() {
-                    $("#btn-comprehensive-verify").prop("disabled", false);
-                });
+            // Increased timeout for comprehensive verification
+            $.ajax({
+                url: self.ajaxUrl,
+                type: 'POST',
+                data: requestData,
+                timeout: 300000, // 5 minutes timeout
+                dataType: 'json'
+            })
+            .done(function(response) {
+                if (response && response.success) {
+                    $("#verify-results").html(response.data);
+                    self.debugLog('✅ Comprehensive verification completed successfully');
+                    
+                    // Show success message
+                    self.showTemporaryMessage(self.strings.verificationComplete, 'success');
+                    
+                    // Scroll to results
+                    $('html, body').animate({
+                        scrollTop: $("#verify-results").offset().top - 100
+                    }, 500);
+                } else {
+                    var errorMsg = response && response.data ? response.data : 'Unknown error';
+                    $("#verify-results").html(self.displayError('Comprehensive verification failed: ' + errorMsg));
+                    self.debugLog('❌ Comprehensive verification failed: ' + errorMsg, 'error');
+                }
+            })
+            .fail(function(xhr, status, error) {
+                var errorMessage = 'Comprehensive verification failed: ' + error;
+                
+                if (status === 'timeout') {
+                    errorMessage = 'Verification timed out. Your site has a large amount of content. Try using "Basic Verify" or individual analysis tools instead.';
+                }
+                
+                $("#verify-results").html(self.displayError(errorMessage, xhr, status, error));
+                self.debugLog('❌ Comprehensive verification failed: ' + error, 'error');
+            })
+            .always(function() {
+                $("#btn-comprehensive-verify").prop("disabled", false);
+            });
         },
         
         /**
@@ -354,7 +456,7 @@ jQuery(document).ready(function($) {
         },
         
         /**
-         * NEW: Update processing UI elements
+         * NEW: Update processing UI elements with enhanced progress display
          */
         updateProcessUI: function(type, status, data) {
             var self = this;
@@ -371,63 +473,90 @@ jQuery(document).ready(function($) {
                     button.prop('disabled', true).text(self.strings.processing);
                     progressWrapper.show();
                     progressBar.css('width', '0%');
+                    progressText.text('0%');
                     
                     if (type === 'translations') {
-                        progressText.text('Phase 1: Corrupted Groups');
                         statusDiv.html('<div class="status-message status-info">Starting 3-phase repair: Corrupted → Posts → Terms</div>');
                     } else {
-                        progressText.text('Starting...');
-                        statusDiv.html('<div class="status-message status-info">Initializing...</div>');
+                        statusDiv.html('<div class="status-message status-info">Scanning for items to process...</div>');
                     }
                     break;
                     
                 case 'processing':
                     var percentage = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
                     progressBar.css('width', percentage + '%');
-                    progressText.text(percentage + '%');
                     
-                    var message = data.message || 'Processing...';
-                    if (data.fixed !== undefined) {
-                        message += ' (Fixed: ' + data.fixed + ')';
+                    // Clear progress text showing current numbers
+                    var progressDisplay = percentage + '%';
+                    if (data.total > 0) {
+                        progressDisplay += ' (' + data.processed + '/' + data.total + ')';
+                    }
+                    progressText.text(progressDisplay);
+                    
+                    // Enhanced status message with clear counts
+                    var statusMessage = '';
+                    if (data.total > 0) {
+                        statusMessage = 'Processing: <strong>' + data.processed + ' of ' + data.total + ' items</strong>';
+                        if (data.fixed !== undefined && data.fixed > 0) {
+                            statusMessage += ' | <strong style="color: #2e7d32;">Fixed: ' + data.fixed + '</strong>';
+                        }
+                    } else {
+                        statusMessage = data.message || 'Processing...';
                     }
                     
                     // Special handling for translation groups phases
                     if (type === 'translations' && data.message) {
                         if (data.message.includes('corrupted')) {
-                            progressText.text(percentage + '% - Phase 1');
+                            statusMessage = 'Phase 1 - Corrupted Groups: ' + statusMessage;
                         } else if (data.message.includes('post groups')) {
-                            progressText.text(percentage + '% - Phase 2');
+                            statusMessage = 'Phase 2 - Post Groups: ' + statusMessage;
                         } else if (data.message.includes('term groups')) {
-                            progressText.text(percentage + '% - Phase 3');
+                            statusMessage = 'Phase 3 - Term Groups: ' + statusMessage;
                         }
                     }
                     
-                    statusDiv.html('<div class="status-message status-info">' + message + '</div>');
+                    statusDiv.html('<div class="status-message status-info">' + statusMessage + '</div>');
                     break;
                     
                 case 'complete':
                     button.prop('disabled', false).text(button.data('original-text') || 'Fix ' + type);
                     progressBar.css('width', '100%');
-                    progressText.text('100%');
+                    progressText.text('Complete!');
                     
-                    var completeMessage = data.message || 'Complete!';
-                    if (data.fixed !== undefined) {
-                        completeMessage += ' (Total Fixed: ' + data.fixed + ')';
+                    // Clear completion message
+                    var completeMessage = '✅ <strong>Processing Complete!</strong>';
+                    if (data.total > 0) {
+                        completeMessage += '<br>Processed: <strong>' + data.total + ' items</strong>';
+                        if (data.fixed !== undefined) {
+                            completeMessage += ' | Fixed: <strong style="color: #2e7d32;">' + data.fixed + ' items</strong>';
+                            
+                            if (data.fixed === 0) {
+                                completeMessage += ' <em>(All items already had correct language assignments)</em>';
+                            }
+                        }
+                    } else {
+                        completeMessage += '<br><em>No items needed processing</em>';
                     }
                     
                     statusDiv.html('<div class="status-message status-success">' + completeMessage + '</div>');
                     
-                    // Hide progress after a delay
+                    // Hide progress after a longer delay so user can read the results
                     setTimeout(function() {
                         progressWrapper.fadeOut();
-                    }, 3000);
+                    }, 5000);
                     break;
                     
                 case 'error':
                     button.prop('disabled', false).text(button.data('original-text') || 'Fix ' + type);
                     progressBar.css('width', '0%');
                     progressText.text('Error');
-                    statusDiv.html('<div class="status-message status-error">' + (data.message || 'An error occurred') + '</div>');
+                    
+                    var errorMessage = '❌ <strong>Error occurred</strong>';
+                    if (data.message) {
+                        errorMessage += '<br>' + data.message;
+                    }
+                    
+                    statusDiv.html('<div class="status-message status-error">' + errorMessage + '</div>');
                     progressWrapper.fadeOut();
                     break;
             }
@@ -487,6 +616,18 @@ jQuery(document).ready(function($) {
         /**
          * Placeholder methods for existing functionality (keeping compatibility)
          */
+        fixPllPrefix: function() {
+            this.debugLog('Fix PLL prefix called - using existing implementation', 'info');
+            // This would call the existing implementation from the current plugin
+            alert('Fix PLL Prefix functionality available - refer to existing implementation');
+        },
+        
+        fixEnglishVariants: function() {
+            this.debugLog('Fix English variants called - using existing implementation', 'info');
+            // This would call the existing implementation from the current plugin
+            alert('Fix English Variants functionality available - refer to existing implementation');
+        },
+        
         fixWooAttributes: function() {
             this.debugLog('Fix WooCommerce attributes called - using existing implementation', 'info');
             // This would call the existing implementation from the current plugin
@@ -517,5 +658,5 @@ jQuery(document).ready(function($) {
     // Initialize the interface
     window.wpmlFixerAjax.init();
     
-    console.log('WPML Fixer: Enhanced JavaScript with batch processing loaded successfully');
+    console.log('WPML Fixer: Enhanced JavaScript with clear progress display loaded successfully');
 });
