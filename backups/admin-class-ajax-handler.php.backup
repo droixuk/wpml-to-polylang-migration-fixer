@@ -1513,7 +1513,31 @@ class WPML_Fixer_Ajax_Handler {
             
             // Generate HTML output with error handling
             try {
-                $this->render_comprehensive_verification_results($results);
+
+                // Extract variables for the view
+
+                extract(array('results' => $results));
+
+                
+
+                // Use the view file instead of hardcoded method
+
+                $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/verification-results-comprehensive.php';
+
+                if (file_exists($view_file)) {
+
+                    include $view_file;
+
+                } else {
+
+                    echo '<div class="status-message status-error">';
+
+                    echo __('Comprehensive verification results template not found.', 'wpml-to-polylang-migration-fixer');
+
+                    echo '</div>';
+
+                }
+
                 $html = ob_get_clean();
                 
                 // Check if output was truncated
@@ -1567,123 +1591,6 @@ class WPML_Fixer_Ajax_Handler {
             wp_send_json_success($fallback_html);
         }
     }
-    
-    /**
-     * Render comprehensive verification results with BetterDocs support
-     */
-    private function render_comprehensive_verification_results($results) {
-        ?>
-        <h3><?php _e('Comprehensive Migration Verification', 'wpml-to-polylang-migration-fixer'); ?></h3>
-        
-        <!-- Overall Status -->
-        <div class="verification-status <?php echo $results['overall_status'] === 'success' ? 'status-success' : 'status-error'; ?>" 
-             style="padding: 15px; margin-bottom: 20px; border-radius: 8px;">
-            <?php if ($results['overall_status'] === 'success'): ?>
-                <h4 style="margin: 0; color: #2e7d32;">✅ Migration Verification: PASSED</h4>
-                <p style="margin: 5px 0 0 0;">All critical components have been successfully migrated from WPML to Polylang.</p>
-            <?php else: ?>
-                <h4 style="margin: 0; color: #c62828;">❌ Migration Verification: ISSUES FOUND</h4>
-                <p style="margin: 5px 0 0 0;">
-                    <strong><?php echo intval($results['total_critical_issues']); ?> critical issues</strong> need attention.
-                </p>
-            <?php endif; ?>
-        </div>
-        
-        <!-- Enhanced Quick Stats with BetterDocs -->
-        <div class="quick-stats">
-            <div class="stat-box">
-                <div class="stat-label"><?php _e('Languages', 'wpml-to-polylang-migration-fixer'); ?></div>
-                <div class="stat-number">
-                    <?php echo intval($results['languages']['pll_languages'] ?? 0); ?>/<?php echo intval($results['languages']['wpml_languages'] ?? 0); ?>
-                </div>
-                <div class="badge <?php echo ($results['languages']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo ($results['languages']['critical_issues'] ?? 0) === 0 ? 'OK' : 'Issues'; ?>
-                </div>
-            </div>
-            
-            <div class="stat-box">
-                <div class="stat-label"><?php _e('Posts', 'wpml-to-polylang-migration-fixer'); ?></div>
-                <div class="stat-number">
-                    <?php echo intval($results['posts']['posts_with_language'] ?? 0); ?>
-                </div>
-                <div class="badge <?php echo ($results['posts']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo ($results['posts']['critical_issues'] ?? 0) === 0 ? 'OK' : intval($results['posts']['critical_issues']) . ' Issues'; ?>
-                </div>
-            </div>
-            
-            <div class="stat-box">
-                <div class="stat-label"><?php _e('Terms', 'wpml-to-polylang-migration-fixer'); ?></div>
-                <div class="stat-number">
-                    <?php echo intval($results['terms']['terms_with_language'] ?? 0); ?>
-                </div>
-                <div class="badge <?php echo ($results['terms']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo ($results['terms']['critical_issues'] ?? 0) === 0 ? 'OK' : intval($results['terms']['critical_issues']) . ' Issues'; ?>
-                </div>
-            </div>
-            
-            <div class="stat-box">
-                <div class="stat-label"><?php _e('Translation Groups', 'wpml-to-polylang-migration-fixer'); ?></div>
-                <div class="stat-number">
-                    <?php echo intval($results['translation_groups']['valid_groups'] ?? 0); ?>/<?php echo intval($results['translation_groups']['total_groups'] ?? 0); ?>
-                </div>
-                <div class="badge <?php echo ($results['translation_groups']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo ($results['translation_groups']['critical_issues'] ?? 0) === 0 ? 'OK' : 'Issues'; ?>
-                </div>
-            </div>
-            
-            <!-- NEW: BetterDocs Status Box -->
-            <?php if (isset($results['betterdocs']) && ($results['betterdocs']['betterdocs_active'] ?? false)): ?>
-            <div class="stat-box">
-                <div class="stat-label"><?php _e('BetterDocs', 'wpml-to-polylang-migration-fixer'); ?></div>
-                <div class="stat-number">
-                    <?php echo intval($results['betterdocs']['docs_with_language'] ?? 0); ?>/<?php echo intval($results['betterdocs']['total_docs'] ?? 0); ?>
-                </div>
-                <div class="badge <?php echo ($results['betterdocs']['critical_issues'] ?? 0) === 0 ? 'badge-success' : 'badge-error'; ?>">
-                    <?php echo ($results['betterdocs']['critical_issues'] ?? 0) === 0 ? 'OK' : intval($results['betterdocs']['critical_issues']) . ' Issues'; ?>
-                </div>
-            </div>
-            <?php endif; ?>
-        </div>
-        
-        <!-- Action Recommendations -->
-        <?php if ($results['overall_status'] !== 'success'): ?>
-        <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
-            <h5 style="margin: 0 0 10px 0;">🔧 Recommended Actions (Priority Order)</h5>
-            <ul style="margin: 0; padding-left: 20px;">
-                <?php if (($results['terms']['terms_without_language'] ?? 0) > 0): ?>
-                <li><strong>🏷️ Priority 1:</strong> Fix <?php echo intval($results['terms']['terms_without_language']); ?> terms without language using "Fix All Taxonomies"</li>
-                <?php endif; ?>
-                
-                <?php 
-                $invalid_groups = intval($results['translation_groups']['invalid_groups'] ?? 0);
-                $orphaned_post_groups = intval($results['posts']['orphaned_wpml_groups'] ?? 0);
-                $orphaned_term_groups = intval($results['terms']['orphaned_wpml_term_groups'] ?? 0);
-                if ($invalid_groups > 0 || $orphaned_post_groups > 0 || $orphaned_term_groups > 0): 
-                ?>
-                <li><strong>🔗 Priority 2:</strong> Fix translation groups (<?php echo $invalid_groups; ?> corrupted, <?php echo $orphaned_post_groups; ?> missing post groups, <?php echo $orphaned_term_groups; ?> missing term groups) using "Fix Translation Groups"</li>
-                <?php endif; ?>
-                
-                <?php if (($results['posts']['posts_without_language'] ?? 0) > 0): ?>
-                <li><strong>📝 Priority 3:</strong> Fix <?php echo intval($results['posts']['posts_without_language']); ?> posts without language using "Fix Posts & Pages"</li>
-                <?php endif; ?>
-                
-                <?php if (isset($results['betterdocs']) && ($results['betterdocs']['betterdocs_active'] ?? false) && ($results['betterdocs']['critical_issues'] ?? 0) > 0): ?>
-                <li><strong>📚 Priority 4:</strong> Fix <?php echo intval($results['betterdocs']['critical_issues']); ?> BetterDocs issues using "Fix BetterDocs"</li>
-                <?php endif; ?>
-            </ul>
-            
-            <?php if (($results['translation_groups']['invalid_groups'] ?? 0) > 0): ?>
-            <div style="margin-top: 15px; padding: 10px; background: #ffebee; border-radius: 5px; border-left: 3px solid #f44336;">
-                <strong>⚠️ Translation Groups Critical:</strong> 
-                <?php echo intval($results['translation_groups']['invalid_groups']); ?> corrupted translation groups detected. 
-                This affects content relationships and should be fixed immediately to restore proper multilingual functionality.
-            </div>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
-        <?php
-    }
-    
     /**
      * Render simple verification results as fallback for large datasets
      */

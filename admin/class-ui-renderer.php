@@ -156,26 +156,6 @@ class WPML_Fixer_UI_Renderer {
                             </div>
                             <div id="status-woocommerce" class="status-message"></div>
                         </div>
-                        
-                        <!-- WooCommerce Attributes -->
-                        <div style="padding: 15px; background: white; border-radius: 5px;">
-                            <h4 style="margin: 0 0 10px 0; font-size: 16px;">
-                                <?php _e('Product Attributes', 'wpml-migration-fixer'); ?>
-                            </h4>
-                            <p class="fix-description">
-                                <?php _e('Special fix for product attribute terms that aren\'t showing in the correct language', 'wpml-migration-fixer'); ?>
-                            </p>
-                            <button id="btn-fix-woo-attributes" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.fixWooAttributes()">
-                                <?php _e('Fix Attribute Terms Language', 'wpml-migration-fixer'); ?>
-                            </button>
-                            <div id="progress-woo-attributes" class="progress-wrapper">
-                                <div class="progress-bar">
-                                    <div id="progress-bar-woo-attributes" class="progress-fill"></div>
-                                    <div id="progress-text-woo-attributes" class="progress-text">0%</div>
-                                </div>
-                            </div>
-                            <div id="woo-attributes-fix-status"></div>
-                        </div>
                     </div>
                     <?php endif; ?>
                     

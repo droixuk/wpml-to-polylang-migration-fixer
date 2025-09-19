@@ -202,29 +202,7 @@ jQuery(document).ready(function($) {
          */
         toggleAccordion: function(id) {
             $("#" + id).toggleClass("active");
-        },
-        
-        /**
-         * Run analysis
-         */
-        runAnalysis: function() {
-            var self = this;
-            $("#analysis-results").html('<div class="spinner"></div><p>Analyzing your content...</p>');
-            $("#btn-analyze").prop("disabled", true);
-            
-            var requestData = self.createRequestData("wpml_fixer_ajax_analyze");
-            
-            $.post(self.ajaxUrl, requestData)
-                .done(function(response) {
-                    if (response && response.success) {
-                        $("#analysis-results").html(response.data);
-                        self.debugLog('✅ Analysis completed successfully');
-                    } else {
-                        var errorMsg = response && response.data ? response.data : 'Unknown error';
-                        $("#analysis-results").html('<div class="status-message status-error">Analysis failed: ' + errorMsg + '</div>');
-                        self.debugLog('❌ Analysis failed: ' + errorMsg, 'error');
-                    }
-                })
+        },                })
                 .fail(function(xhr, status, error) {
                     $("#analysis-results").html('<div class="status-message status-error">Analysis failed: ' + error + '</div>');
                     self.debugLog('❌ Analysis failed: ' + error, 'error');
@@ -232,29 +210,7 @@ jQuery(document).ready(function($) {
                 .always(function() {
                     $("#btn-analyze").prop("disabled", false);
                 });
-        },
-        
-        /**
-         * Run diagnosis
-         */
-        runDiagnosis: function() {
-            var self = this;
-            $("#diagnosis-results").html('<div class="spinner"></div><p>Running language diagnosis...</p>');
-            $("#btn-diagnose").prop("disabled", true);
-            
-            var requestData = self.createRequestData("wpml_fixer_ajax_diagnose");
-            
-            $.post(self.ajaxUrl, requestData)
-                .done(function(response) {
-                    if (response && response.success) {
-                        $("#diagnosis-results").html(response.data);
-                        self.debugLog('✅ Diagnosis completed successfully');
-                    } else {
-                        var errorMsg = response && response.data ? response.data : 'Unknown error';
-                        $("#diagnosis-results").html('<div class="status-message status-error">Diagnosis failed: ' + errorMsg + '</div>');
-                        self.debugLog('❌ Diagnosis failed: ' + errorMsg, 'error');
-                    }
-                })
+        },                })
                 .fail(function(xhr, status, error) {
                     $("#diagnosis-results").html('<div class="status-message status-error">Diagnosis failed: ' + error + '</div>');
                     self.debugLog('❌ Diagnosis failed: ' + error, 'error');
@@ -262,29 +218,7 @@ jQuery(document).ready(function($) {
                 .always(function() {
                     $("#btn-diagnose").prop("disabled", false);
                 });
-        },
-        
-        /**
-         * Verify migration (legacy method)
-         */
-        verifyMigration: function() {
-            var self = this;
-            $("#verify-results").html('<div class="spinner"></div><p>Verifying migration integrity...</p>');
-            $("#btn-verify").prop("disabled", true);
-            
-            var requestData = self.createRequestData("wpml_fixer_ajax_verify_migration");
-            
-            $.post(self.ajaxUrl, requestData)
-                .done(function(response) {
-                    if (response && response.success) {
-                        $("#verify-results").html(response.data);
-                        self.debugLog('✅ Verification completed successfully');
-                    } else {
-                        var errorMsg = response && response.data ? response.data : 'Unknown error';
-                        $("#verify-results").html('<div class="status-message status-error">Verification failed: ' + errorMsg + '</div>');
-                        self.debugLog('❌ Verification failed: ' + errorMsg, 'error');
-                    }
-                })
+        },                })
                 .fail(function(xhr, status, error) {
                     $("#verify-results").html('<div class="status-message status-error">Verification failed: ' + error + '</div>');
                     self.debugLog('❌ Verification failed: ' + error, 'error');
@@ -611,32 +545,7 @@ jQuery(document).ready(function($) {
             
             errorHtml += '</div>';
             return errorHtml;
-        },
-        
-        /**
-         * Placeholder methods for existing functionality (keeping compatibility)
-         */
-        fixPllPrefix: function() {
-            this.debugLog('Fix PLL prefix called - using existing implementation', 'info');
-            // This would call the existing implementation from the current plugin
-            alert('Fix PLL Prefix functionality available - refer to existing implementation');
-        },
-        
-        fixEnglishVariants: function() {
-            this.debugLog('Fix English variants called - using existing implementation', 'info');
-            // This would call the existing implementation from the current plugin
-            alert('Fix English Variants functionality available - refer to existing implementation');
-        },
-        
-        fixWooAttributes: function() {
-            this.debugLog('Fix WooCommerce attributes called - using existing implementation', 'info');
-            // This would call the existing implementation from the current plugin
-            alert('Fix WooCommerce attributes functionality available - refer to existing implementation');
-        },
-        
-        resetSession: function() {
-            if (confirm(this.strings.confirmReset)) {
-                this.sessionFixed = {};
+        },;
                 this.processingStates = {}; // Reset processing states
                 var requestData = this.createRequestData("wpml_fixer_ajax_reset_session");
                 $.post(this.ajaxUrl, requestData);

@@ -1,3 +1,5 @@
 *.log
 .DS_Store
 Thumbs.db
+backups
+backups_cleanup_20250919_181201
