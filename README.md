@@ -50,101 +50,59 @@ wpml-to-polylang-migration-fixer/
 
 ## Features
 
-### Core Functionality
+### Core Diagnostics
+- **System Status Badges** – Instantly confirm WPML tables, Polylang activation, and the presence of WooCommerce, BetterDocs, and ACF.
+- **Comprehensive Verification** – SQL-backed checks for orphaned languages, missing translation groups, and BetterDocs mismatches.
+- **WPML Data Detection** – Confirms legacy WPML tables before running automated fixes.
 
-#### Analysis & Diagnostics
-- **Comprehensive Analysis** - Counts posts, pages, and terms with/without language assignments
-- **Smart Diagnosis** - Detects corrupted `pll_` language codes and unsupported language variants
-- **Migration Verification** - Validates translation groups, identifies orphaned content, and detects duplicate assignments
-- **WPML Data Detection** - Checks for existing WPML tables and data remnants
+### Automated Fixes
+- **Posts & Pages** – Reassigns languages for every public post type using WPML translation data (BetterDocs and WooCommerce included).
+- **Taxonomies** – Repairs language assignments for public taxonomies, including WooCommerce attribute taxonomies.
+- **BetterDocs Workflow** – Dedicated batch covers docs, FAQs, and BetterDocs taxonomies in one pass.
+- **Translation Groups** – Rebuilds Polylang translation sets with multi-phase processing.
 
-#### Automated Fixes
-- **Posts & Pages** - Assigns correct languages to all post types based on WPML data
-- **Taxonomies** - Fixes language assignments for all taxonomies (categories, tags, custom)
-- **WooCommerce Support**:
-  - Products and product variations (inherits parent language)
-  - Product categories and tags
-  - Product attributes (`pa_*` taxonomies)
-- **BetterDocs Integration**:
-  - Documentation articles (`docs` post type)
-  - Documentation categories and tags
-  - Knowledge bases taxonomy
-- **Translation Groups** - Rebuilds Polylang translation relationships from WPML data
-- **Menu Items** - Fixes language assignments for navigation menus
+### Recovery Tools
+- **Ensure Language Buckets** – Creates missing `term_language` containers required by Polylang.
+- **Normalize Codes** – Canonicalises corrupted `pll_` slugs and language variants prior to reassignment.
+- **Dry-Run Insights** – Detailed per-batch messaging clarifies what changed and what was already correct.
 
-#### Emergency Fixes
-- Remove corrupted `pll_` prefixed language codes
-- Normalize language variants (e.g., `en-GB` → `en`, `pt-BR` → `pt`)
-- Clean up duplicate language assignments
-
-### Advanced Features
-
-#### Performance & Reliability
-- **Batch Processing** - Configurable batch sizes (5-100 items) to prevent timeouts
-- **Transaction Safety** - Database rollbacks on errors to prevent data corruption
-- **Progress Tracking** - Real-time progress bars with ETA calculations
-- **Memory Management** - Optimized queries and chunked processing
-
-#### Debug & Monitoring
-- **Detailed Logging** - Daily log files in `wp-content/uploads/wpml-to-polylang-fixer-logs/`
-- **Performance Metrics** - Processing speed (items/sec) and batch timing
-- **Error Tracking** - Comprehensive error logging with stack traces
-- **Log Export** - One-click ZIP export of all logs for support
-
-### User Interface
-- **Modern Admin Panel** - Clean, intuitive interface integrated into WordPress admin
-- **Accordion Sections** - Organized tools grouped by functionality
-- **AJAX Processing** - No page refreshes during operations
-- **Real-time Updates** - Live progress bars and status messages
-- **Responsive Design** - Works on all screen sizes
+### UX & Observability
+- **Batch Processing** – Chunked processing (50 items per request) keeps long migrations responsive.
+- **Live Progress** – Progress bars with cumulative counters and per-batch summaries.
+- **Debug Logging** – Daily log files in `wp-content/uploads/wpml-to-polylang-fixer-logs/` with optional verbose mode.
+- **Status Dashboard** – Tools → *WPML Fixer Status* provides deeper integration checks and SQL preflight tooling.
 
 -----
 
 ## Usage Guide
 
-### Step 1: Initial Analysis
-1. Navigate to `Tools → WPML Fixer` in your WordPress admin
-2. Click **"Run Analysis"** to get an overview of content needing fixes
-3. Review the counts of posts and terms with/without language assignments
+### Step 1: Review Status
+1. Navigate to `Tools → WPML Fixer` and confirm the WPML, Polylang, WooCommerce, BetterDocs, and ACF badges.
+2. Open `Tools → WPML Fixer Status` for in-depth diagnostics when you need table-level detail or SQL previews.
 
-### Step 2: Diagnosis
-1. Click **"Run Diagnosis"** to identify specific issues
-2. Check for:
-   - Corrupted `pll_` language codes
-   - Unsupported language variants
-   - Missing WPML data
+### Step 2: Prepare the Environment
+1. Click **"Ensure Language Buckets"** to make sure Polylang has the required term containers.
+2. Run **"Normalize All Language Codes"** whenever you suspect corrupted `pll_` slugs or regional variants.
 
 ### Step 3: Apply Fixes (Recommended Order)
-1. **Emergency Fixes** (if needed):
-   - Fix `pll_` prefix issues
-   - Normalize language variants
-2. **Content Fixes**:
-   - Fix Posts & Pages
-   - Fix Taxonomies
-   - Fix WooCommerce Products (if using WooCommerce)
-   - Fix Product Attributes
-   - Fix BetterDocs (if using BetterDocs)
-3. **Relationship Fixes**:
-   - Fix Translation Groups (run this last)
+1. **Fix All Posts (Comprehensive)** – covers every public post type, including BetterDocs and WooCommerce content.
+2. **Fix All Terms (Comprehensive)** – repairs languages for categories, tags, custom taxonomies, and WooCommerce terms.
+3. **Fix BetterDocs (Comprehensive)** – reruns targeted passes for docs, FAQs, and BetterDocs taxonomies.
+4. **Fix Product Attributes (pa_*)** – run when WooCommerce attributes need dedicated attention.
+5. **Fix Translation Groups** – rebuilds post and term groupings once language assignments look healthy.
 
-### Step 4: Verification
-1. Click **"Verify Migration"** for a comprehensive check
-2. Review the detailed report showing:
-   - Language assignments status
-   - Translation group integrity
-   - Any remaining issues
-3. Re-run specific fixes if issues are detected
+### Step 4: Verify
+1. Click **"Comprehensive Verification"** to generate a post-migration report.
+2. Review highlighted issues (remaining null languages, mismatched groups, BetterDocs totals) and rerun individual fixers as needed.
 
 -----
 
 ## Configuration
 
 ### Settings
-The plugin provides several configurable options accessible through the admin interface:
+The primary runtime toggle lives inside the System Status card:
 
-- **Batch Size**: Adjust processing batch size (5-100 items) based on server capacity
-- **Debug Mode**: Enable detailed logging for troubleshooting
-- **Language Mappings**: Configure custom language code mappings
+- **Debug Mode**: Enable detailed logging for troubleshooting (outputs to `wp-content/uploads/wpml-to-polylang-fixer-logs/`).
 
 ### Filters & Hooks
 
@@ -366,6 +324,12 @@ WHERE element_id={term_taxonomy_id} AND element_type='tax_{taxonomy}'
 7. **Run Verification** - Confirm all fixed
 
 ## Changelog
+
+### Version 1.2.1 (January 2025)
+- Added System Status badges for WooCommerce, BetterDocs, and ACF to the main dashboard.
+- Ensured comprehensive fixers report cumulative progress and reliable per-batch summaries.
+- Updated the BetterDocs fixer to cover posts, FAQs, and taxonomies within a single run.
+- Refreshed documentation so the workflow mirrors the current UI and tooling.
 
 ### Version 1.2.0 (December 2024)
 - Added comprehensive language canonicalization system

@@ -185,24 +185,95 @@ class WPML_Fixer_Admin_Handler {
             'polylang_active' => function_exists('pll_languages_list'),
             'languages' => [],
             'default_language' => '',
-            'stats' => []
+            'stats' => [],
+            'wpml' => [
+                'data_exists' => false,
+                'version' => ''
+            ],
+            'polylang' => [
+                'active' => function_exists('pll_languages_list'),
+                'version' => ''
+            ],
+            'woocommerce' => [
+                'active' => false,
+                'version' => ''
+            ],
+            'betterdocs' => [
+                'active' => false,
+                'version' => ''
+            ],
+            'acf' => [
+                'present' => false,
+                'active' => false,
+                'has_translation' => false,
+                'version' => ''
+            ]
         ];
         
         // Check for WPML tables
         if ($this->db_helper && method_exists($this->db_helper, 'wpml_tables_exist')) {
             $status['wpml_data_exists'] = $this->db_helper->wpml_tables_exist();
         }
-        
+
+        $status['wpml']['data_exists'] = $status['wpml_data_exists'];
+        $status['wpml']['version'] = defined('ICL_SITEPRESS_VERSION') ? ICL_SITEPRESS_VERSION : (defined('WPML_PLUGIN_VERSION') ? WPML_PLUGIN_VERSION : '');
+        if (empty($status['wpml']['version'])) {
+            $option_version = get_option('icl_sitepress_version');
+            if (!empty($option_version)) {
+                $status['wpml']['version'] = $option_version;
+            }
+        }
+
         if ($status['polylang_active']) {
             $status['languages'] = pll_languages_list(['fields' => 'slug']);
             $status['default_language'] = pll_default_language();
         }
-        
+
+        $status['polylang']['active'] = $status['polylang_active'];
+        $status['polylang']['version'] = defined('POLYLANG_VERSION') ? POLYLANG_VERSION : '';
+
         // Get migration statistics
         if ($this->db_helper && method_exists($this->db_helper, 'get_migration_statistics')) {
             $status['stats'] = $this->db_helper->get_migration_statistics();
         }
-        
+
+        // Detect key integrations for quick status badges
+        if ($this->db_helper) {
+            if (method_exists($this->db_helper, 'has_woocommerce')) {
+                $status['woocommerce']['active'] = $this->db_helper->has_woocommerce();
+                $status['woocommerce']['version'] = defined('WC_VERSION') ? WC_VERSION : '';
+            } else {
+                $status['woocommerce']['active'] = class_exists('WooCommerce') || function_exists('wc');
+                $status['woocommerce']['version'] = defined('WC_VERSION') ? WC_VERSION : '';
+            }
+
+            if (method_exists($this->db_helper, 'has_betterdocs')) {
+                $status['betterdocs']['active'] = $this->db_helper->has_betterdocs();
+                $status['betterdocs']['version'] = defined('BETTERDOCS_VERSION') ? BETTERDOCS_VERSION : '';
+            } else {
+                $status['betterdocs']['active'] = class_exists('BetterDocs') || post_type_exists('docs');
+                $status['betterdocs']['version'] = defined('BETTERDOCS_VERSION') ? BETTERDOCS_VERSION : '';
+            }
+
+            $acf_present = $this->db_helper->has_acf();
+            $acf_translatable = $acf_present ? $this->db_helper->acf_has_translation_data() : false;
+
+            $status['acf']['present'] = $acf_present;
+            $status['acf']['active'] = $acf_translatable;
+            $status['acf']['has_translation'] = $acf_translatable;
+            $status['acf']['version'] = $acf_present && defined('ACF_VERSION') ? ACF_VERSION : '';
+        } else {
+            $status['woocommerce']['active'] = class_exists('WooCommerce');
+            $status['woocommerce']['version'] = defined('WC_VERSION') ? WC_VERSION : '';
+            $status['betterdocs']['active'] = class_exists('BetterDocs') || post_type_exists('docs');
+            $status['betterdocs']['version'] = defined('BETTERDOCS_VERSION') ? BETTERDOCS_VERSION : '';
+            $acf_present = function_exists('acf') || function_exists('acf_get_field_groups') || defined('ACF_VERSION');
+            $status['acf']['present'] = $acf_present;
+            $status['acf']['active'] = false;
+            $status['acf']['has_translation'] = false;
+            $status['acf']['version'] = $acf_present && defined('ACF_VERSION') ? ACF_VERSION : '';
+        }
+
         return $status;
     }
 
@@ -258,7 +329,10 @@ class WPML_Fixer_Admin_Handler {
                 'verifyingHint' => __('This may take a few moments. Please keep this tab open.', 'wpml-migration-fixer'),
                 'verifyingButton' => __('Processing verification...', 'wpml-migration-fixer'),
                 'verificationComplete' => __('Verification complete!', 'wpml-migration-fixer'),
-                'noLanguages' => __('No Polylang languages detected.', 'wpml-migration-fixer')
+                'noLanguages' => __('No Polylang languages detected.', 'wpml-migration-fixer'),
+                'analysing' => __('Analysing pending items...', 'wpml-migration-fixer'),
+                'noIssues' => __('No issues found; nothing to fix.', 'wpml-migration-fixer'),
+                'previewFailed' => __('Unable to analyse items before running the fix.', 'wpml-migration-fixer')
             ]
         ];
         

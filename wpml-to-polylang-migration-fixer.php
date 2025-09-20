@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: WPML to Polylang Migration Fixer
- * Plugin URI: https://your-website.com/wpml-to-polylang-migration-fixer
- * Description: Comprehensive tool to fix language assignments and translation groups after migrating from WPML to Polylang
+ * Plugin URI: https://droix.net/
+ * Description: Developed by DROIX (DROIX.net) – audit and repair WPML ➜ Polylang migrations with automated language and translation fixes.
  * Version: 1.1.0
- * Author: Your Name
- * Author URI: https://your-website.com
+ * Author: DROIX
+ * Author URI: https://droix.net/
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: wpml-to-polylang-migration-fixer

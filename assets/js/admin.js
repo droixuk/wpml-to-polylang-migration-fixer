@@ -180,13 +180,23 @@ jQuery(document).ready(function($) {
                 text: elements.text ? $(elements.text) : $wrapper.find('[data-progress-role="text"], .progress-text').first(),
                 processed: elements.processed ? $(elements.processed) : $wrapper.find('[data-progress-role="processed-count"]').first(),
                 fixed: elements.fixed ? $(elements.fixed) : $wrapper.find('[data-progress-role="fixed-count"]').first(),
+                totalDisplay: elements.total ? $(elements.total) : $wrapper.find('[data-progress-role="total-count"]').first(),
+                issuesTotal: elements.issuesTotal ? $(elements.issuesTotal) : $wrapper.find('[data-progress-role="issues-total"]').first(),
+                issuesFixed: elements.issuesFixed ? $(elements.issuesFixed) : $wrapper.find('[data-progress-role="issues-fixed"]').first(),
+                issuesRemaining: elements.issuesRemaining ? $(elements.issuesRemaining) : $wrapper.find('[data-progress-role="issues-remaining"]').first(),
                 status: $status,
                 counts: {
                     processed: 0,
                     total: 0,
-                    fixed: 0
+                    fixed: 0,
+                    issues_total: 0,
+                    issues_remaining: 0
                 }
             };
+
+            if ((!controller.fixed || !controller.fixed.length) && controller.issuesFixed && controller.issuesFixed.length) {
+                controller.fixed = controller.issuesFixed;
+            }
 
             this.progressControllers[type] = controller;
 
@@ -659,7 +669,7 @@ jQuery(document).ready(function($) {
          * @param {number} total
          * @param {number} fixed
          */
-        setProgressCounts: function(controller, processed, total, fixed) {
+        setProgressCounts: function(controller, processed, total, fixed, issues) {
             if (!controller) {
                 return;
             }
@@ -668,19 +678,51 @@ jQuery(document).ready(function($) {
             total = typeof total === 'number' ? total : parseInt(total || 0, 10) || 0;
             fixed = typeof fixed === 'number' ? fixed : parseInt(fixed || 0, 10) || 0;
 
+            var issuesTotal = controller.counts.issues_total || 0;
+            var issuesRemaining = controller.counts.issues_remaining || 0;
+            if (issues && typeof issues === 'object') {
+                if (typeof issues.total === 'number') {
+                    issuesTotal = issues.total;
+                }
+                if (typeof issues.remaining === 'number') {
+                    issuesRemaining = issues.remaining;
+                }
+            }
+
+            issuesTotal = typeof issuesTotal === 'number' ? issuesTotal : parseInt(issuesTotal || 0, 10) || 0;
+            issuesRemaining = typeof issuesRemaining === 'number' ? issuesRemaining : parseInt(issuesRemaining || 0, 10) || 0;
+            var issuesFixed = Math.max(issuesTotal - issuesRemaining, 0);
+
             controller.counts = {
                 processed: processed,
                 total: total,
-                fixed: fixed
+                fixed: fixed,
+                issues_total: issuesTotal,
+                issues_remaining: issuesRemaining
             };
 
-            if (controller.processed && controller.processed.length) {
-                var processedDisplay = total > 0 ? processed + ' / ' + total : processed;
-                controller.processed.text(processedDisplay);
+            if (controller.totalDisplay && controller.totalDisplay.length) {
+                controller.totalDisplay.text(total);
             }
 
-            if (controller.fixed && controller.fixed.length) {
+            if (controller.processed && controller.processed.length) {
+                controller.processed.text(processed);
+            }
+
+            if (controller.fixed && controller.fixed.length && (!controller.issuesFixed || controller.fixed[0] !== controller.issuesFixed[0])) {
                 controller.fixed.text(fixed);
+            }
+
+            if (controller.issuesTotal && controller.issuesTotal.length) {
+                controller.issuesTotal.text(issuesTotal);
+            }
+
+            if (controller.issuesFixed && controller.issuesFixed.length) {
+                controller.issuesFixed.text(issuesFixed);
+            }
+
+            if (controller.issuesRemaining && controller.issuesRemaining.length) {
+                controller.issuesRemaining.text(issuesRemaining);
             }
         },
 
@@ -929,16 +971,10 @@ jQuery(document).ready(function($) {
         startBatchProcess: function(processId, action, additionalData) {
             var self = this;
 
-            if (self.processingStates[processId] && self.processingStates[processId].running) {
+            if (self.processingStates[processId] && (self.processingStates[processId].running || self.processingStates[processId].preview)) {
                 self.debugLog('Process ' + processId + ' already running', 'warning');
                 return;
             }
-
-            self.processingStates[processId] = {
-                running: true,
-                fixed: 0,
-                total: 0
-            };
 
             var controller = self.getProgressController(processId);
             if (!controller) {
@@ -947,97 +983,85 @@ jQuery(document).ready(function($) {
             if (!controller && self.debugEnabled) {
                 self.debugLog('Unable to initialise progress UI for "' + processId + '"', 'error');
             }
-
-            self.updateProcessUI(processId, 'starting', { total: 0 });
-
-            self.debugLog('Starting batch process: ' + processId);
-
-            self.processBatch(processId, action, 0, additionalData || {});
-        },
-
-        /**
-         * Process a batch with the new comprehensive handlers
-         */
-        processBatch: function(processId, action, offset, additionalData) {
-            var self = this;
-            var state = self.processingStates[processId];
-
-            if (!state || !state.running) {
-                self.debugLog('Process ' + processId + ' was stopped or not initialised', 'warning');
-                return;
+            if (controller) {
+                if (controller.wrapper && controller.wrapper.length) {
+                    controller.wrapper.stop(true, true).show();
+                }
+                if (controller.fill && controller.fill.length) {
+                    controller.fill.css('width', '0%');
+                }
+                if (controller.text && controller.text.length) {
+                    controller.text.text(self.formatProgressLabel(0, 0, 0, 0));
+                }
+                self.setProgressCounts(controller, 0, 0, 0, { total: 0, remaining: 0 });
+                if (controller.status && controller.status.length) {
+                    controller.status.html('<div class="status-message status-info">' + self.escapeHtml(self.strings.analysing || 'Analysing pending items...') + '</div>');
+                }
             }
 
-            var requestData = self.createRequestData(action, $.extend({
-                offset: offset,
-                batch_size: 50
-            }, additionalData));
+            self.processingStates[processId] = {
+                running: false,
+                preview: true,
+                fixed: 0,
+                total: 0,
+                issuesTotal: null,
+                issuesRemaining: null
+            };
 
-            $.post(self.ajaxUrl, requestData)
-                .done(function(response) {
-                    if (response && response.success) {
-                        var data = response.data || {};
-                        var controller = self.getProgressController(processId);
-                        if (!controller) {
-                            controller = self.registerProgressType(processId);
-                        }
+            self.runPreflight(processId, action, additionalData || {})
+                .done(function(preview) {
+                    preview = preview || {};
+                    var previewTotal = preview.total !== undefined ? preview.total : 0;
+                    var issuesTotal = preview.issues_total !== undefined ? preview.issues_total : null;
+                    var issuesRemaining = preview.issues_remaining !== undefined ? preview.issues_remaining : issuesTotal;
 
-                        var total = data.total || (controller && controller.counts ? controller.counts.total : 0);
-                        var processed = data.processed || 0;
-                        var fixedBatch = data.fixed || 0;
-                        var aggregatedFixed;
-
-                        if (typeof data.fixed_total === 'number') {
-                            aggregatedFixed = data.fixed_total;
-                        } else if (controller && controller.counts && typeof controller.counts.fixed === 'number') {
-                            aggregatedFixed = controller.counts.fixed + fixedBatch;
-                        } else {
-                            aggregatedFixed = fixedBatch;
-                        }
-
-                        var progressLabel = data.message || ('Processed ' + processed + ' / ' + (total || 0));
-
-                        self.updateProcessUI(processId, 'processing', {
-                            processed: processed,
-                            total: total,
-                            fixed: aggregatedFixed,
-                            message: progressLabel
+                    if (controller) {
+                        self.setProgressCounts(controller, 0, previewTotal || (issuesTotal || 0), 0, {
+                            total: issuesTotal || 0,
+                            remaining: issuesRemaining !== null ? issuesRemaining : (issuesTotal || 0)
                         });
-
-                        state.fixed = aggregatedFixed;
-                        state.total = total;
-
-                        self.debugLog('Progress ' + processId + ': ' + processed + '/' + total + ' | fixed total ' + aggregatedFixed);
-
-                        if (data.continue && data.next_offset !== undefined) {
-                            setTimeout(function() {
-                                self.processBatch(processId, action, data.next_offset, additionalData);
-                            }, 100);
-                        } else {
-                            state.running = false;
-                            self.updateProcessUI(processId, 'complete', {
-                                processed: processed,
-                                total: total,
-                                fixed: aggregatedFixed,
-                                message: data.message || 'Complete!'
-                            });
-                            delete self.processingStates[processId];
-                            self.debugLog('Process ' + processId + ' completed successfully');
-                            self.showTemporaryMessage('Process ' + processId + ' completed!', 'success');
-                        }
-                    } else {
-                        var errorMsg = response && response.data ? response.data : 'Unknown error';
-                        state.running = false;
-                        delete self.processingStates[processId];
-                        self.updateProcessUI(processId, 'error', { message: errorMsg });
-                        self.debugLog('❌ Process ' + processId + ' failed: ' + errorMsg, 'error');
                     }
+
+                    if (!issuesTotal || issuesTotal <= 0) {
+                        delete self.processingStates[processId];
+                        if (controller && controller.status && controller.status.length) {
+                            controller.status.html('<div class="status-message status-success">' + self.escapeHtml(self.strings.noIssues || 'No issues found; nothing to fix.') + '</div>');
+                        }
+                        if (controller && controller.button && controller.button.length) {
+                            controller.button.prop('disabled', false).text(controller.button.data('original-text') || $.trim(controller.button.text()));
+                        }
+                        self.showTemporaryMessage(self.strings.noIssues || 'No issues found; nothing to fix.', 'info');
+                        return;
+                    }
+
+                    self.processingStates[processId] = {
+                        running: true,
+                        preview: false,
+                        fixed: 0,
+                        total: previewTotal || issuesTotal,
+                        issuesTotal: issuesTotal,
+                        issuesRemaining: issuesRemaining !== null ? issuesRemaining : issuesTotal
+                    };
+
+                    self.updateProcessUI(processId, 'starting', {
+                        total: previewTotal || issuesTotal,
+                        issues_total: issuesTotal,
+                        issues_remaining: issuesRemaining !== null ? issuesRemaining : issuesTotal
+                    });
+
+                    self.debugLog('Starting batch process: ' + processId);
+
+                    self.processBatch(processId, action, 0, additionalData || {});
                 })
-                .fail(function(xhr, status, error) {
-                    var message = error || status || 'Request failed';
-                    state.running = false;
+                .fail(function(errorMsg) {
                     delete self.processingStates[processId];
-                    self.updateProcessUI(processId, 'error', { message: message });
-                    self.debugLog('❌ Process ' + processId + ' failed: ' + message, 'error');
+                    if (controller && controller.status && controller.status.length) {
+                        controller.status.html('<div class="status-message status-error">❌ ' + self.escapeHtml(errorMsg) + '</div>');
+                    }
+                    if (controller && controller.button && controller.button.length) {
+                        controller.button.prop('disabled', false).text(controller.button.data('original-text') || $.trim(controller.button.text()));
+                    }
+                    self.debugLog('❌ Preflight ' + processId + ' failed: ' + errorMsg, 'error');
                 });
         },
 
@@ -1152,7 +1176,9 @@ jQuery(document).ready(function($) {
                 running: true,
                 offset: 0,
                 total: 0,
-                fixed: 0
+                fixed: 0,
+                issuesTotal: null,
+                issuesRemaining: null
             };
             
             // Update UI
@@ -1163,79 +1189,144 @@ jQuery(document).ready(function($) {
         },
         
         /**
-         * NEW: Process a batch for a specific type
+         * Process a batch (supports both comprehensive and legacy handlers)
          */
-        processBatch: function(type, offset, batchSize) {
+        processBatch: function(processId, arg2, arg3, arg4) {
             var self = this;
-            
-            if (!self.processingStates[type] || !self.processingStates[type].running) {
-                self.debugLog('Process ' + type + ' stopped or not initialized', 'warning');
+
+            if (!self.processingStates[processId] || !self.processingStates[processId].running) {
+                self.debugLog('Process ' + processId + ' stopped or not initialized', 'warning');
                 return;
             }
-            
-            self.debugLog('Processing batch for ' + type + ' - offset: ' + offset + ', batch: ' + batchSize);
-            
-            var requestData = self.createRequestData("wpml_fixer_ajax_process", {
-                type: type,
+
+            var state = self.processingStates[processId];
+
+            var isComprehensive = typeof arg2 === 'string' && arg2.indexOf('wmf_') === 0;
+            var action = isComprehensive ? arg2 : 'wpml_fixer_ajax_process';
+            var offset = isComprehensive ? (typeof arg3 === 'number' ? arg3 : 0) : (typeof arg2 === 'number' ? arg2 : 0);
+            var batchSize = isComprehensive ? 50 : (typeof arg3 === 'number' ? arg3 : 20);
+            var additionalData = isComprehensive ? (arg4 && typeof arg4 === 'object' ? arg4 : {}) : {};
+
+            self.debugLog('Processing batch for ' + processId + ' - offset: ' + offset + ', batch: ' + batchSize + (isComprehensive ? ', action: ' + action : ''));
+
+            var requestPayload = {
                 offset: offset,
                 batch_size: batchSize
-            });
-            
+            };
+
+            if (isComprehensive) {
+                if (additionalData && typeof additionalData === 'object') {
+                    $.extend(requestPayload, additionalData);
+                }
+
+                if (typeof state.issuesTotal === 'number') {
+                    requestPayload.issues_total = state.issuesTotal;
+                }
+                if (typeof state.issuesRemaining === 'number') {
+                    requestPayload.issues_remaining = state.issuesRemaining;
+                }
+            } else {
+                requestPayload.type = processId;
+            }
+
+            var requestData = self.createRequestData(action, requestPayload);
+
             $.post(self.ajaxUrl, requestData)
                 .done(function(response) {
                     if (response && response.success) {
-                        var result = response.data;
-                        
-                        // Update processing state
-                        var state = self.processingStates[type];
-                        state.total = result.total || state.total;
-                        state.fixed += result.fixed || 0;
-                        
-                        // Update UI
-                        self.updateProcessUI(type, 'processing', {
+                        var result = response.data || {};
+
+                        state.total = result.total !== undefined ? result.total : state.total;
+                        if (result.fixed !== undefined) {
+                            state.fixed += result.fixed;
+                        }
+
+                        if (result.issues_total !== undefined) {
+                            state.issuesTotal = result.issues_total;
+                        }
+                        if (result.issues_remaining !== undefined) {
+                            state.issuesRemaining = result.issues_remaining;
+                        }
+
+                        self.updateProcessUI(processId, 'processing', {
                             processed: result.processed,
                             total: result.total,
                             fixed: state.fixed,
-                            message: result.message
+                            message: result.message,
+                            issues_total: state.issuesTotal,
+                            issues_remaining: state.issuesRemaining
                         });
-                        
-                        self.debugLog('Batch completed for ' + type + ': ' + 
-                                     'processed=' + result.processed + 
-                                     ', fixed=' + result.fixed + 
-                                     ', continue=' + result.continue);
-                        
-                        // Continue with next batch if needed
+
+                        self.debugLog('Batch completed for ' + processId + ': processed=' + result.processed + ', fixed=' + (result.fixed || 0) + ', continue=' + result.continue);
+
                         if (result.continue && result.next_offset !== undefined) {
-                            setTimeout(function() {
-                                self.processBatch(type, result.next_offset, batchSize);
-                            }, 100); // Small delay to prevent overwhelming the server
+                            if (isComprehensive) {
+                                setTimeout(function() {
+                                    self.processBatch(processId, action, result.next_offset, additionalData);
+                                }, 100);
+                            } else {
+                                setTimeout(function() {
+                                    self.processBatch(processId, result.next_offset, batchSize);
+                                }, 100);
+                            }
                         } else {
-                            // Processing complete
-                            self.processingStates[type].running = false;
-                            self.updateProcessUI(type, 'complete', {
+                            state.running = false;
+                            self.updateProcessUI(processId, 'complete', {
                                 processed: result.processed,
                                 total: result.total,
                                 fixed: state.fixed,
-                                message: result.message || 'Complete!'
+                                message: result.message || 'Complete!',
+                                issues_total: state.issuesTotal,
+                                issues_remaining: state.issuesRemaining
                             });
-                            
-                            self.debugLog('Process ' + type + ' completed successfully');
-                            self.showTemporaryMessage('Process ' + type + ' completed!', 'success');
+
+                            self.debugLog('Process ' + processId + ' completed successfully');
+                            self.showTemporaryMessage('Process ' + processId + ' completed!', 'success');
                         }
                     } else {
                         var errorMsg = response && response.data ? response.data : 'Unknown error';
-                        self.processingStates[type].running = false;
-                        self.updateProcessUI(type, 'error', { message: errorMsg });
-                        self.debugLog('❌ Process ' + type + ' failed: ' + errorMsg, 'error');
+                            state.running = false;
+                            self.updateProcessUI(processId, 'error', { message: errorMsg });
+                        self.debugLog('❌ Process ' + processId + ' failed: ' + errorMsg, 'error');
                     }
                 })
                 .fail(function(xhr, status, error) {
-                    self.processingStates[type].running = false;
-                    self.updateProcessUI(type, 'error', { message: error });
-                    self.debugLog('❌ Process ' + type + ' failed: ' + error, 'error');
+                    state.running = false;
+                    self.updateProcessUI(processId, 'error', { message: error });
+                    self.debugLog('❌ Process ' + processId + ' failed: ' + error, 'error');
                 });
         },
-        
+
+        /**
+         * Run a preview request before executing an action
+         */
+        runPreflight: function(processId, action, additionalData) {
+            var self = this;
+            var deferred = $.Deferred();
+
+            var payload = $.extend({
+                offset: 0,
+                batch_size: 1,
+                preview: 1
+            }, additionalData || {});
+
+            var requestData = self.createRequestData(action, payload);
+
+            $.post(self.ajaxUrl, requestData)
+                .done(function(response) {
+                    if (response && response.success) {
+                        deferred.resolve(response.data || {});
+                    } else {
+                        deferred.reject(response && response.data ? response.data : (self.strings.previewFailed || 'Unable to analyse issues.'));
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    deferred.reject(error || status || (self.strings.previewFailed || 'Unable to analyse issues.'));
+                });
+
+            return deferred.promise();
+        },
+
         /**
          * NEW: Update processing UI elements with enhanced progress display
          */
@@ -1265,7 +1356,10 @@ jQuery(document).ready(function($) {
                     if (progressFill && progressFill.length) {
                         progressFill.css('width', '0%');
                     }
-                    self.setProgressCounts(controller, 0, data.total || 0, 0);
+                    self.setProgressCounts(controller, 0, data.total || 0, 0, {
+                        total: data.issues_total || 0,
+                        remaining: data.issues_remaining !== undefined ? data.issues_remaining : (data.issues_total || 0)
+                    });
                     if (progressText && progressText.length) {
                         var initialText = self.formatProgressLabel(0, 0, data.total || 0, 0);
                         progressText.text(initialText);
@@ -1302,7 +1396,10 @@ jQuery(document).ready(function($) {
                     if (progressText && progressText.length) {
                         progressText.text(self.formatProgressLabel(percentage, processed, total, fixedTotal));
                     }
-                    self.setProgressCounts(controller, processed, total, fixedTotal);
+                    self.setProgressCounts(controller, processed, total, fixedTotal, {
+                        total: data.issues_total !== undefined ? data.issues_total : controller.counts.issues_total,
+                        remaining: data.issues_remaining !== undefined ? data.issues_remaining : controller.counts.issues_remaining
+                    });
 
                     // Enhanced status message with clear counts
                     var statusMessage = data.message || 'Processing...';
@@ -1341,7 +1438,10 @@ jQuery(document).ready(function($) {
                     } else {
                         completeFixed = typeof countsSnapshot.fixed === 'number' ? countsSnapshot.fixed : 0;
                     }
-                    self.setProgressCounts(controller, completeProcessed, completeTotal || completeProcessed, completeFixed);
+                    self.setProgressCounts(controller, completeProcessed, completeTotal || completeProcessed, completeFixed, {
+                        total: data.issues_total !== undefined ? data.issues_total : controller.counts.issues_total,
+                        remaining: data.issues_remaining !== undefined ? data.issues_remaining : controller.counts.issues_remaining
+                    });
                     if (progressText && progressText.length) {
                         var completePercentage = completeTotal > 0 ? 100 : (completeProcessed > 0 ? 100 : 0);
                         progressText.text(self.formatProgressLabel(completePercentage, completeProcessed, completeTotal || completeProcessed, completeFixed));
@@ -1371,7 +1471,7 @@ jQuery(document).ready(function($) {
                     if (progressWrapper && progressWrapper.length) {
                         setTimeout(function() {
                             progressWrapper.fadeOut();
-                        }, 5000);
+                        }, 12000);
                     }
                     break;
                     
@@ -1379,11 +1479,23 @@ jQuery(document).ready(function($) {
                     if (button && button.length) {
                         button.prop('disabled', false).text(button.data('original-text') || 'Fix ' + type);
                     }
+                    if (progressWrapper && progressWrapper.length) {
+                        progressWrapper.stop(true, true).show();
+                    }
+                    var errorCounts = controller.counts || {};
+                    var errorPercent = errorCounts.total > 0
+                        ? Math.max(0, Math.min(100, Math.round((errorCounts.processed / errorCounts.total) * 100)))
+                        : 0;
                     if (progressFill && progressFill.length) {
-                        progressFill.css('width', '0%');
+                        progressFill.css('width', errorPercent + '%');
                     }
                     if (progressText && progressText.length) {
-                        progressText.text(self.strings.error || 'Error');
+                        progressText.text(self.formatProgressLabel(
+                            errorPercent,
+                            errorCounts.processed || 0,
+                            errorCounts.total || 0,
+                            errorCounts.fixed || 0
+                        ));
                     }
                     
                     var errorMessage = '❌ <strong>Error occurred</strong>';
@@ -1394,10 +1506,7 @@ jQuery(document).ready(function($) {
                     if (statusDiv && statusDiv.length) {
                         statusDiv.html('<div class="status-message status-error">' + errorMessage + '</div>');
                     }
-                    if (progressWrapper && progressWrapper.length) {
-                        progressWrapper.fadeOut();
-                    }
-                    break;
+                break;
             }
         },
         
@@ -1413,10 +1522,10 @@ jQuery(document).ready(function($) {
             $('body').append(messageDiv);
             
             setTimeout(function() {
-                messageDiv.fadeOut(500, function() {
+                messageDiv.fadeOut(600, function() {
                     messageDiv.remove();
                 });
-            }, 3000);
+            }, 12000);
         },
         
         /**

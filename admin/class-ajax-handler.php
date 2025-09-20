@@ -1717,6 +1717,26 @@ class WPML_Fixer_Ajax_Handler {
         try {
             $offset = intval($_POST['offset'] ?? 0);
             $batch_size = intval($_POST['batch_size'] ?? 50);
+            $preview = !empty($_POST['preview']);
+
+            $pattern = isset($_POST['pattern']) ? sanitize_text_field(wp_unslash($_POST['pattern'])) : 'pll_%';
+            $issues_snapshot = $this->db_helper->get_content_with_wrong_codes($pattern);
+            $issues_total = (int)($issues_snapshot['posts'] ?? 0) + (int)($issues_snapshot['terms'] ?? 0);
+
+            if ($preview) {
+                wp_send_json_success([
+                    'total' => $issues_total,
+                    'processed' => 0,
+                    'fixed' => 0,
+                    'continue' => $issues_total > 0,
+                    'issues_total' => $issues_total,
+                    'issues_remaining' => $issues_total,
+                    'message' => $issues_total > 0
+                        ? __('Found language codes that need normalization.', 'wpml-migration-fixer')
+                        : __('No language codes require normalization.', 'wpml-migration-fixer')
+                ]);
+                return;
+            }
 
             // Process posts first
             if ($offset < 10000) {
@@ -1733,6 +1753,13 @@ class WPML_Fixer_Ajax_Handler {
                 $results['continue'] = !empty($terms);
                 $results['next_offset'] = $offset + $batch_size;
             }
+
+            $issues_after = $this->db_helper->get_content_with_wrong_codes($pattern);
+            $issues_remaining = (int)($issues_after['posts'] ?? 0) + (int)($issues_after['terms'] ?? 0);
+
+            $results['total'] = $issues_total;
+            $results['issues_total'] = $issues_total;
+            $results['issues_remaining'] = $issues_remaining;
 
             wp_send_json_success($results);
         } catch (Exception $e) {
@@ -1772,6 +1799,42 @@ class WPML_Fixer_Ajax_Handler {
 
             $post_types_sql = "'" . implode("','", array_map('esc_sql', $post_types)) . "'";
 
+            $preview = !empty($_POST['preview']);
+            $issues_total_input = isset($_POST['issues_total']) ? max(0, intval($_POST['issues_total'])) : null;
+
+            $issues_before = (int) $wpdb->get_var("
+                SELECT COUNT(*)
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+                LEFT JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id AND tt.taxonomy = 'language'
+                WHERE p.post_type IN ({$post_types_sql})
+                AND p.post_status IN ('publish', 'draft', 'private')
+                AND tt.term_taxonomy_id IS NULL
+            ");
+
+            $total = (int) $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->posts}
+                WHERE post_type IN ({$post_types_sql})
+                AND post_status IN ('publish', 'draft', 'private')
+            ");
+
+            $issues_total = ($issues_total_input !== null) ? max($issues_total_input, $issues_before) : $issues_before;
+
+            if ($preview) {
+                wp_send_json_success([
+                    'total' => $total,
+                    'processed' => 0,
+                    'fixed' => 0,
+                    'continue' => $issues_total > 0,
+                    'issues_total' => $issues_total,
+                    'issues_remaining' => $issues_total,
+                    'message' => $issues_total > 0
+                        ? __('Found posts without Polylang languages.', 'wpml-migration-fixer')
+                        : __('All posts already have language assignments.', 'wpml-migration-fixer')
+                ]);
+                return;
+            }
+
             // Get batch of posts
             $posts = $wpdb->get_col($wpdb->prepare("
                 SELECT ID FROM {$wpdb->posts}
@@ -1781,25 +1844,52 @@ class WPML_Fixer_Ajax_Handler {
                 LIMIT %d OFFSET %d
             ", $batch_size, $offset));
 
-            $results = ['processed' => 0, 'fixed' => 0, 'continue' => false];
-
+            $batch_results = ['processed' => 0, 'fixed' => 0];
             if (!empty($posts)) {
                 $batch_results = $this->db_helper->fix_posts_batch($posts);
-                $results = $batch_results;
             }
 
-            // Check if we should continue
-            $total = $wpdb->get_var("
-                SELECT COUNT(*) FROM {$wpdb->posts}
-                WHERE post_type IN ({$post_types_sql})
-                AND post_status IN ('publish', 'draft', 'private')
+            $items_processed = !empty($posts) ? count($posts) : 0;
+            if (isset($batch_results['processed']) && $batch_results['processed'] > 0) {
+                $items_processed = (int) $batch_results['processed'];
+            }
+
+            $processed_total = $total > 0 ? min($offset + $items_processed, $total) : 0;
+            $fixed_batch = isset($batch_results['fixed']) ? (int) $batch_results['fixed'] : 0;
+
+            $issues_remaining = (int) $wpdb->get_var("
+                SELECT COUNT(*)
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+                LEFT JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id AND tt.taxonomy = 'language'
+                WHERE p.post_type IN ({$post_types_sql})
+                AND p.post_status IN ('publish', 'draft', 'private')
+                AND tt.term_taxonomy_id IS NULL
             ");
 
-            $results['continue'] = ($offset + count($posts)) < $total;
-            $results['next_offset'] = $offset + $batch_size;
-            $results['total'] = $total;
+            $issues_fixed = max($issues_total - $issues_remaining, 0);
 
-            wp_send_json_success($results);
+            $response = [
+                'total' => $total,
+                'processed' => $processed_total,
+                'fixed' => $fixed_batch,
+                'continue' => ($processed_total < $total) && ($items_processed > 0),
+                'issues_total' => $issues_total,
+                'issues_remaining' => $issues_remaining,
+                'issues_fixed' => $issues_fixed,
+                'message' => sprintf(
+                    __('Processed %1$d of %2$d posts (fixed %3$d this batch)', 'wpml-migration-fixer'),
+                    $processed_total,
+                    $total,
+                    $fixed_batch
+                )
+            ];
+
+            if ($response['continue']) {
+                $response['next_offset'] = $offset + $items_processed;
+            }
+
+            wp_send_json_success($response);
         } catch (Exception $e) {
             if ($this->logger) {
                 $this->logger->log_error("Failed to fix posts", $e);
@@ -1843,6 +1933,7 @@ class WPML_Fixer_Ajax_Handler {
             }
 
             $taxonomies_sql = "'" . implode("','", array_map('esc_sql', $taxonomies)) . "'";
+            $preview = !empty($_POST['preview']);
 
             // Get batch of terms
             $terms = $wpdb->get_results($wpdb->prepare("
@@ -1853,24 +1944,93 @@ class WPML_Fixer_Ajax_Handler {
                 LIMIT %d OFFSET %d
             ", $batch_size, $offset));
 
-            $results = ['processed' => 0, 'fixed' => 0, 'continue' => false];
-
-            if (!empty($terms)) {
-                $batch_results = $this->db_helper->fix_terms_batch($terms);
-                $results = $batch_results;
-            }
-
-            // Check if we should continue
-            $total = $wpdb->get_var("
+            $total = (int) $wpdb->get_var("
                 SELECT COUNT(*) FROM {$wpdb->term_taxonomy}
                 WHERE taxonomy IN ({$taxonomies_sql})
             ");
 
-            $results['continue'] = ($offset + count($terms)) < $total;
-            $results['next_offset'] = $offset + $batch_size;
-            $results['total'] = $total;
+            $issues_total_input = isset($_POST['issues_total']) ? max(0, intval($_POST['issues_total'])) : null;
 
-            wp_send_json_success($results);
+            $issues_terms_before = (int) $wpdb->get_var("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$wpdb->terms} t
+                JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy IN ({$taxonomies_sql})
+                AND NOT EXISTS (
+                    SELECT 1 FROM {$wpdb->term_relationships} tr
+                    JOIN {$wpdb->term_taxonomy} tt2 ON tr.term_taxonomy_id = tt2.term_taxonomy_id AND tt2.taxonomy = 'term_language'
+                    WHERE tr.object_id = t.term_id
+                )
+            ");
+
+            $issues_baseline = $issues_terms_before;
+            $issues_total = ($issues_total_input !== null) ? max($issues_total_input, $issues_baseline) : $issues_baseline;
+
+            if ($preview) {
+                wp_send_json_success([
+                    'total' => $total,
+                    'processed' => 0,
+                    'fixed' => 0,
+                    'continue' => $issues_total > 0,
+                    'issues_total' => $issues_total,
+                    'issues_remaining' => $issues_total,
+                    'message' => $issues_total > 0
+                        ? __('Found terms without language assignments.', 'wpml-migration-fixer')
+                        : __('All terms already have language assignments.', 'wpml-migration-fixer')
+                ]);
+                return;
+            }
+
+            $batch_results = ['processed' => 0, 'fixed' => 0];
+            if (!empty($terms)) {
+                $batch_results = $this->db_helper->fix_terms_batch($terms);
+            }
+
+            $items_processed = !empty($terms) ? count($terms) : 0;
+            if (isset($batch_results['processed']) && $batch_results['processed'] > 0) {
+                $items_processed = (int) $batch_results['processed'];
+            }
+
+            $processed_total = $total > 0 ? min($offset + $items_processed, $total) : 0;
+            $fixed_batch = isset($batch_results['fixed']) ? (int) $batch_results['fixed'] : 0;
+
+            $issues_terms_remaining = (int) $wpdb->get_var("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$wpdb->terms} t
+                JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy IN ({$taxonomies_sql})
+                AND NOT EXISTS (
+                    SELECT 1 FROM {$wpdb->term_relationships} tr
+                    JOIN {$wpdb->term_taxonomy} tt2 ON tr.term_taxonomy_id = tt2.term_taxonomy_id AND tt2.taxonomy = 'term_language'
+                    WHERE tr.object_id = t.term_id
+                )
+            ");
+
+            $issues_remaining = $issues_terms_remaining;
+
+            $issues_fixed = max($issues_total - $issues_remaining, 0);
+
+            $response = [
+                'total' => $total,
+                'processed' => $processed_total,
+                'fixed' => $fixed_batch,
+                'continue' => ($processed_total < $total) && ($items_processed > 0),
+                'issues_total' => $issues_total,
+                'issues_remaining' => $issues_remaining,
+                'issues_fixed' => $issues_fixed,
+                'message' => sprintf(
+                    __('Processed %1$d of %2$d terms (fixed %3$d this batch)', 'wpml-migration-fixer'),
+                    $processed_total,
+                    $total,
+                    $fixed_batch
+                )
+            ];
+
+            if ($response['continue']) {
+                $response['next_offset'] = $offset + $items_processed;
+            }
+
+            wp_send_json_success($response);
         } catch (Exception $e) {
             if ($this->logger) {
                 $this->logger->log_error("Failed to fix terms", $e);
@@ -1886,13 +2046,195 @@ class WPML_Fixer_Ajax_Handler {
         $this->verify_request(true);
 
         try {
-            $type = sanitize_text_field($_POST['type'] ?? 'posts');
-            $offset = intval($_POST['offset'] ?? 0);
-            $batch_size = intval($_POST['batch_size'] ?? 50);
+            if (!$this->db_helper || !$this->db_helper->has_betterdocs()) {
+                wp_send_json_success([
+                    'total' => 0,
+                    'processed' => 0,
+                    'fixed' => 0,
+                    'continue' => false,
+                    'message' => __('BetterDocs content not detected.', 'wpml-migration-fixer')
+                ]);
+            }
 
-            $results = $this->db_helper->fix_betterdocs_batch($type, $batch_size, $offset);
+            $offset = max(0, intval($_POST['offset'] ?? 0));
+            $batch_size = max(1, intval($_POST['batch_size'] ?? 50));
+            $preview = !empty($_POST['preview']);
 
-            wp_send_json_success($results);
+            global $wpdb;
+
+            $post_types = ['docs', 'betterdocs_faq'];
+            $post_types_sql = "'" . implode("','", array_map('esc_sql', $post_types)) . "'";
+            $total_posts = (int) $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->posts}
+                WHERE post_type IN ({$post_types_sql})
+                AND post_status IN ('publish', 'draft', 'private')
+            ");
+
+            $taxonomies = ['doc_category', 'doc_tag', 'knowledge_base', 'betterdocs_faq_category'];
+            $taxonomies_sql = "'" . implode("','", array_map('esc_sql', $taxonomies)) . "'";
+            $total_terms = (int) $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->term_taxonomy}
+                WHERE taxonomy IN ({$taxonomies_sql})
+            ");
+
+            $grand_total = $total_posts + $total_terms;
+
+            if ($grand_total === 0) {
+                wp_send_json_success([
+                    'total' => 0,
+                    'processed' => 0,
+                    'fixed' => 0,
+                    'continue' => false,
+                    'message' => __('No BetterDocs posts or terms found.', 'wpml-migration-fixer')
+                ]);
+            }
+
+            $issues_total_input = isset($_POST['issues_total']) ? max(0, intval($_POST['issues_total'])) : null;
+
+            $issues_posts_before = (int) $wpdb->get_var("
+                SELECT COUNT(*)
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+                LEFT JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id AND tt.taxonomy = 'language'
+                WHERE p.post_type IN ({$post_types_sql})
+                AND p.post_status IN ('publish', 'draft', 'private')
+                AND tt.term_taxonomy_id IS NULL
+            ");
+
+            $issues_terms_before = (int) $wpdb->get_var("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$wpdb->terms} t
+                JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy IN ({$taxonomies_sql})
+                AND NOT EXISTS (
+                    SELECT 1 FROM {$wpdb->term_relationships} tr
+                    JOIN {$wpdb->term_taxonomy} tt2 ON tr.term_taxonomy_id = tt2.term_taxonomy_id AND tt2.taxonomy = 'term_language'
+                    WHERE tr.object_id = t.term_id
+                )
+            ");
+
+            $issues_baseline = $issues_posts_before + $issues_terms_before;
+            $issues_total = ($issues_total_input !== null) ? max($issues_total_input, $issues_baseline) : $issues_baseline;
+
+            if ($preview) {
+                wp_send_json_success([
+                    'total' => $grand_total,
+                    'processed' => 0,
+                    'fixed' => 0,
+                    'continue' => $issues_total > 0,
+                    'issues_total' => $issues_total,
+                    'issues_remaining' => $issues_total,
+                    'message' => $issues_total > 0
+                        ? __('Found BetterDocs content without language assignments.', 'wpml-migration-fixer')
+                        : __('BetterDocs content is already aligned.', 'wpml-migration-fixer')
+                ]);
+                return;
+            }
+
+            $stage = ($offset < $total_posts) ? 'posts' : 'terms';
+            $items_processed = 0;
+            $processed_total = 0;
+            $fixed_batch = 0;
+            $next_offset = null;
+            $message = '';
+
+            if ($stage === 'posts') {
+                $batch_results = $this->db_helper->fix_betterdocs_batch('posts', $batch_size, $offset);
+                $items_processed = isset($batch_results['processed']) ? (int) $batch_results['processed'] : 0;
+                $fixed_batch = isset($batch_results['fixed']) ? (int) $batch_results['fixed'] : 0;
+
+                $processed_total = $total_posts > 0 ? min($offset + $items_processed, $total_posts) : 0;
+
+                if ($items_processed > 0) {
+                    $next_offset = $offset + $items_processed;
+                    $message = sprintf(
+                        __('BetterDocs posts %1$d of %2$d processed (fixed %3$d this batch)', 'wpml-migration-fixer'),
+                        $processed_total,
+                        $total_posts,
+                        $fixed_batch
+                    );
+                } else {
+                    $processed_total = $total_posts;
+                    if ($total_terms > 0) {
+                        $next_offset = $total_posts;
+                        $message = __('BetterDocs posts complete, continuing with taxonomies…', 'wpml-migration-fixer');
+                    } else {
+                        $message = __('BetterDocs posts are already aligned.', 'wpml-migration-fixer');
+                    }
+                }
+            } else {
+                $term_offset = max(0, $offset - $total_posts);
+                $batch_results = $this->db_helper->fix_betterdocs_batch('terms', $batch_size, $term_offset);
+                $items_processed = isset($batch_results['processed']) ? (int) $batch_results['processed'] : 0;
+                $fixed_batch = isset($batch_results['fixed']) ? (int) $batch_results['fixed'] : 0;
+
+                $processed_terms = $total_terms > 0 ? min($term_offset + $items_processed, $total_terms) : 0;
+                $processed_total = $total_posts + $processed_terms;
+
+                if ($items_processed > 0) {
+                    $next_offset = $offset + $items_processed;
+                    $message = sprintf(
+                        __('BetterDocs taxonomies %1$d of %2$d processed (fixed %3$d this batch)', 'wpml-migration-fixer'),
+                        $processed_terms,
+                        $total_terms,
+                        $fixed_batch
+                    );
+                } else {
+                    $message = __('BetterDocs taxonomies are already aligned.', 'wpml-migration-fixer');
+                }
+            }
+
+            $processed_total = min($processed_total, $grand_total);
+            $continue = false;
+
+            if ($stage === 'posts') {
+                $continue = ($processed_total < $grand_total) && ($next_offset !== null);
+            } else {
+                $continue = ($processed_total < $grand_total) && ($items_processed > 0);
+            }
+
+            $issues_posts_after = (int) $wpdb->get_var("
+                SELECT COUNT(*)
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+                LEFT JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id AND tt.taxonomy = 'language'
+                WHERE p.post_type IN ({$post_types_sql})
+                AND p.post_status IN ('publish', 'draft', 'private')
+                AND tt.term_taxonomy_id IS NULL
+            ");
+
+            $issues_terms_after = (int) $wpdb->get_var("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$wpdb->terms} t
+                JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                WHERE tt.taxonomy IN ({$taxonomies_sql})
+                AND NOT EXISTS (
+                    SELECT 1 FROM {$wpdb->term_relationships} tr
+                    JOIN {$wpdb->term_taxonomy} tt2 ON tr.term_taxonomy_id = tt2.term_taxonomy_id AND tt2.taxonomy = 'term_language'
+                    WHERE tr.object_id = t.term_id
+                )
+            ");
+
+            $issues_remaining = $issues_posts_after + $issues_terms_after;
+            $issues_fixed = max($issues_total - $issues_remaining, 0);
+
+            $response = [
+                'total' => $grand_total,
+                'processed' => $processed_total,
+                'fixed' => $fixed_batch,
+                'continue' => $continue,
+                'issues_total' => $issues_total,
+                'issues_remaining' => $issues_remaining,
+                'issues_fixed' => $issues_fixed,
+                'stage' => $stage,
+                'message' => $message
+            ];
+
+            if ($continue && $next_offset !== null) {
+                $response['next_offset'] = $next_offset;
+            }
+
+            wp_send_json_success($response);
         } catch (Exception $e) {
             if ($this->logger) {
                 $this->logger->log_error("Failed to fix BetterDocs", $e);
@@ -1911,9 +2253,95 @@ class WPML_Fixer_Ajax_Handler {
             $offset = intval($_POST['offset'] ?? 0);
             $batch_size = intval($_POST['batch_size'] ?? 50);
 
+            $preview = !empty($_POST['preview']);
             $results = $this->db_helper->fix_woocommerce_attributes_batch($batch_size, $offset);
 
-            wp_send_json_success($results);
+            $total = isset($results['total']) ? (int) $results['total'] : 0;
+            $items_processed = isset($results['processed']) ? (int) $results['processed'] : 0;
+            $fixed_batch = isset($results['fixed']) ? (int) $results['fixed'] : 0;
+
+            $issues_total_input = isset($_POST['issues_total']) ? max(0, intval($_POST['issues_total'])) : null;
+
+            $attributes = !empty($results['attributes']) ? $results['attributes'] : $wpdb->get_col("
+                SELECT DISTINCT taxonomy FROM {$wpdb->term_taxonomy}
+                WHERE taxonomy LIKE 'pa_%'
+            ");
+
+            $issues_before = 0;
+            if (!empty($attributes)) {
+                $attributes_sql = "'" . implode("','", array_map('esc_sql', $attributes)) . "'";
+                $issues_before = (int) $wpdb->get_var("
+                    SELECT COUNT(DISTINCT t.term_id)
+                    FROM {$wpdb->terms} t
+                    JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                    WHERE tt.taxonomy IN ({$attributes_sql})
+                    AND NOT EXISTS (
+                        SELECT 1 FROM {$wpdb->term_relationships} tr
+                        JOIN {$wpdb->term_taxonomy} tt2 ON tr.term_taxonomy_id = tt2.term_taxonomy_id AND tt2.taxonomy = 'term_language'
+                        WHERE tr.object_id = t.term_id
+                    )
+                ");
+            }
+
+            $issues_total = ($issues_total_input !== null) ? max($issues_total_input, $issues_before) : $issues_before;
+
+            if ($preview) {
+                wp_send_json_success([
+                    'total' => $total,
+                    'processed' => 0,
+                    'fixed' => 0,
+                    'continue' => $issues_total > 0,
+                    'issues_total' => $issues_total,
+                    'issues_remaining' => $issues_total,
+                    'message' => $issues_total > 0
+                        ? __('Found WooCommerce attributes without language assignments.', 'wpml-migration-fixer')
+                        : __('All WooCommerce attributes are already translated.', 'wpml-migration-fixer')
+                ]);
+                return;
+            }
+
+            $processed_total = $total > 0 ? min($offset + $items_processed, $total) : 0;
+            $continue = ($processed_total < $total) && ($items_processed > 0);
+
+            $issues_remaining = $issues_before;
+            if (!empty($attributes)) {
+                $attributes_sql = "'" . implode("','", array_map('esc_sql', $attributes)) . "'";
+                $issues_remaining = (int) $wpdb->get_var("
+                    SELECT COUNT(DISTINCT t.term_id)
+                    FROM {$wpdb->terms} t
+                    JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                    WHERE tt.taxonomy IN ({$attributes_sql})
+                    AND NOT EXISTS (
+                        SELECT 1 FROM {$wpdb->term_relationships} tr
+                        JOIN {$wpdb->term_taxonomy} tt2 ON tr.term_taxonomy_id = tt2.term_taxonomy_id AND tt2.taxonomy = 'term_language'
+                        WHERE tr.object_id = t.term_id
+                    )
+                ");
+            }
+
+            $issues_fixed = max($issues_total - $issues_remaining, 0);
+
+            $response = [
+                'total' => $total,
+                'processed' => $processed_total,
+                'fixed' => $fixed_batch,
+                'continue' => $continue,
+                'issues_total' => $issues_total,
+                'issues_remaining' => $issues_remaining,
+                'issues_fixed' => $issues_fixed,
+                'message' => sprintf(
+                    __('Processed %1$d of %2$d product attributes (fixed %3$d this batch)', 'wpml-migration-fixer'),
+                    $processed_total,
+                    $total,
+                    $fixed_batch
+                )
+            ];
+
+            if ($continue) {
+                $response['next_offset'] = $offset + $items_processed;
+            }
+
+            wp_send_json_success($response);
         } catch (Exception $e) {
             if ($this->logger) {
                 $this->logger->log_error("Failed to fix WooCommerce attributes", $e);

@@ -699,6 +699,60 @@ class WPML_To_Polylang_Fixer_Database_Helper {
     }
 
     /**
+     * Determine if ACF objects have translation data (WPML or Polylang).
+     */
+    public function acf_has_translation_data(): bool {
+        global $wpdb;
+
+        $acf_post_types = [];
+        if (post_type_exists('acf-field')) {
+            $acf_post_types[] = 'acf-field';
+        }
+        if (post_type_exists('acf-field-group')) {
+            $acf_post_types[] = 'acf-field-group';
+        }
+
+        if (empty($acf_post_types)) {
+            return false;
+        }
+
+        // Check WPML translation records
+        if ($this->has_wpml_tables()) {
+            $wpml_exists = $wpdb->get_var(
+                "SELECT 1 FROM {$this->icl_table}
+                 WHERE element_type IN ('post_acf-field','post_acf-field-group')
+                 LIMIT 1"
+            );
+
+            if (!empty($wpml_exists)) {
+                return true;
+            }
+        }
+
+        // Check Polylang relationships
+        if ($this->has_polylang()) {
+            $post_types_sql = "'" . implode("','", array_map('esc_sql', $acf_post_types)) . "'";
+
+            $pll_exists = $wpdb->get_var(
+                "SELECT 1
+                 FROM {$wpdb->posts} p
+                 JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+                 JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+                 WHERE p.post_type IN ({$post_types_sql})
+                 AND p.post_status IN ('publish','draft','private')
+                 AND tt.taxonomy = 'language'
+                 LIMIT 1"
+            );
+
+            if (!empty($pll_exists)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Get Polylang languages list and default language slug.
      */
     public function get_pll_languages(): array {

@@ -27,18 +27,13 @@ class WPML_Fixer_UI_Renderer {
             </div>
             
             <!-- Migration Guide -->
-            <?php
-            $guide_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/migration-guide.php';
-            if (file_exists($guide_file)) {
-                include $guide_file;
-            }
-            ?>
-
             <!-- System Status -->
             <div class="wpml-card" style="margin-bottom: 30px;">
                 <h2><span class="icon">⚙️</span> <?php _e('System Status', 'wpml-migration-fixer'); ?></h2>
                 
                 <?php
+                $wpml        = isset($system_status['wpml']) ? $system_status['wpml'] : ['data_exists' => !empty($system_status['wpml_data_exists']), 'version' => ''];
+                $polylang    = isset($system_status['polylang']) ? $system_status['polylang'] : ['active' => !empty($system_status['polylang_active']), 'version' => ''];
                 $woocommerce = isset($system_status['woocommerce']) ? $system_status['woocommerce'] : ['active' => false, 'version' => ''];
                 $betterdocs  = isset($system_status['betterdocs']) ? $system_status['betterdocs'] : ['active' => false, 'version' => ''];
                 $acf         = isset($system_status['acf']) ? $system_status['acf'] : ['active' => false, 'version' => ''];
@@ -46,16 +41,22 @@ class WPML_Fixer_UI_Renderer {
                 ?>
                 <div class="quick-stats">
                     <div class="stat-box">
-                        <div class="stat-label"><?php _e('WPML Data', 'wpml-migration-fixer'); ?></div>
+                        <div class="stat-label"><?php _e('WPML', 'wpml-migration-fixer'); ?></div>
                         <div class="badge <?php echo $system_status['wpml_data_exists'] ? 'badge-success' : 'badge-error'; ?>">
                             <?php echo $system_status['wpml_data_exists'] ? '✅ ' . __('Found', 'wpml-migration-fixer') : '❌ ' . __('Missing', 'wpml-migration-fixer'); ?>
                         </div>
+                        <?php if (!empty($wpml['version']) && $system_status['wpml_data_exists']) : ?>
+                            <div class="stat-meta"><?php printf(__('Version %s', 'wpml-migration-fixer'), esc_html($wpml['version'])); ?></div>
+                        <?php endif; ?>
                     </div>
                     <div class="stat-box">
                         <div class="stat-label"><?php _e('Polylang', 'wpml-migration-fixer'); ?></div>
                         <div class="badge <?php echo $system_status['polylang_active'] ? 'badge-success' : 'badge-error'; ?>">
                             <?php echo $system_status['polylang_active'] ? '✅ ' . __('Active', 'wpml-migration-fixer') : '❌ ' . __('Inactive', 'wpml-migration-fixer'); ?>
                         </div>
+                        <?php if (!empty($polylang['version']) && $system_status['polylang_active']) : ?>
+                            <div class="stat-meta"><?php printf(__('Version %s', 'wpml-migration-fixer'), esc_html($polylang['version'])); ?></div>
+                        <?php endif; ?>
                     </div>
                     <div class="stat-box">
                         <div class="stat-label"><?php _e('WooCommerce', 'wpml-migration-fixer'); ?></div>
@@ -75,13 +76,24 @@ class WPML_Fixer_UI_Renderer {
                             <div class="stat-meta"><?php printf(__('Version %s', 'wpml-migration-fixer'), esc_html($betterdocs['version'])); ?></div>
                         <?php endif; ?>
                     </div>
+                    <?php
+                    $acf_present = !empty($acf['present']);
+                    $acf_active = !empty($acf['active']);
+                    $acf_badge_class = $acf_active ? 'badge-success' : ($acf_present ? 'badge-warning' : 'badge-info');
+                    $acf_badge_label = $acf_active
+                        ? '✅ ' . __('Detected', 'wpml-migration-fixer')
+                        : ($acf_present ? '⚠️ ' . __('No Translation Data', 'wpml-migration-fixer') : 'ℹ️ ' . __('Not Detected', 'wpml-migration-fixer'));
+                    ?>
                     <div class="stat-box">
                         <div class="stat-label"><?php _e('ACF', 'wpml-migration-fixer'); ?></div>
-                        <div class="badge <?php echo $acf['active'] ? 'badge-success' : 'badge-info'; ?>">
-                            <?php echo $acf['active'] ? '✅ ' . __('Detected', 'wpml-migration-fixer') : 'ℹ️ ' . __('Not Detected', 'wpml-migration-fixer'); ?>
+                        <div class="badge <?php echo esc_attr($acf_badge_class); ?>">
+                            <?php echo esc_html($acf_badge_label); ?>
                         </div>
-                        <?php if (!empty($acf['version']) && $acf['active']) : ?>
+                        <?php if (!empty($acf['version']) && $acf_present) : ?>
                             <div class="stat-meta"><?php printf(__('Version %s', 'wpml-migration-fixer'), esc_html($acf['version'])); ?></div>
+                        <?php endif; ?>
+                        <?php if ($acf_present && !$acf_active) : ?>
+                            <div class="stat-meta"><?php _e('Translation data not detected', 'wpml-migration-fixer'); ?></div>
                         <?php endif; ?>
                     </div>
                     <div class="stat-box">
@@ -163,6 +175,7 @@ class WPML_Fixer_UI_Renderer {
                                 <div id="progress-bar-normalize" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-normalize" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                     </div>
 
@@ -183,15 +196,17 @@ class WPML_Fixer_UI_Renderer {
                                 <div id="progress-bar-posts" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-posts" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                         <div id="progress-all-posts" class="progress-wrapper" data-progress-for="all-posts">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-all-posts" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-all-posts" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                     </div>
-                    
+
                     <!-- Categories & Tags -->
                     <div class="fix-section">
                         <h3>🏷️ <?php _e('Categories & Tags', 'wpml-migration-fixer'); ?></h3>
@@ -209,15 +224,17 @@ class WPML_Fixer_UI_Renderer {
                                 <div id="progress-bar-taxonomies" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-taxonomies" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                         <div id="progress-all-terms" class="progress-wrapper" data-progress-for="all-terms">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-all-terms" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-all-terms" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                     </div>
-                    
+
                     <?php if (class_exists('WooCommerce')): ?>
                     <!-- WooCommerce Section -->
                     <div class="fix-section">
@@ -236,16 +253,18 @@ class WPML_Fixer_UI_Renderer {
                                 <div id="progress-bar-woocommerce" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-woocommerce" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                         <div id="progress-woo-attributes" class="progress-wrapper" data-progress-for="woo-attributes">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-woo-attributes" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-woo-attributes" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                     </div>
                     <?php endif; ?>
-                    
+
                     <?php if (post_type_exists('docs') || post_type_exists('betterdocs_faq')): ?>
                     <!-- BetterDocs -->
                     <div class="fix-section">
@@ -264,16 +283,18 @@ class WPML_Fixer_UI_Renderer {
                                 <div id="progress-bar-betterdocs" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-betterdocs" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                         <div id="progress-fix-betterdocs" class="progress-wrapper" data-progress-for="fix-betterdocs">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-fix-betterdocs" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-fix-betterdocs" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                     </div>
                     <?php endif; ?>
-                    
+
                     <!-- Translation Groups -->
                     <div class="fix-section">
                         <h3>🔗 <?php _e('Translation Groups', 'wpml-migration-fixer'); ?></h3>
@@ -288,10 +309,18 @@ class WPML_Fixer_UI_Renderer {
                                 <div id="progress-bar-translations" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-translations" class="progress-text" data-progress-role="text">0%</div>
                             </div>
+                            <?php $this->render_progress_meta(); ?>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <?php
+            $guide_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/migration-guide.php';
+            if (file_exists($guide_file)) {
+                include $guide_file;
+            }
+            ?>
             
             <!-- Debug Console (Hidden by default) -->
             <div id="debug-console" class="wpml-card" style="display: none; margin-top: 20px; background: #f5f5f5; border-left: 4px solid #ff9800;">
@@ -319,5 +348,35 @@ class WPML_Fixer_UI_Renderer {
         } else {
             echo '<div class="wrap"><div class="error"><p>' . esc_html__('Status view is not available.', 'wpml-migration-fixer') . '</p></div></div>';
         }
+    }
+
+    /**
+     * Render reusable progress meta layout
+     */
+    private function render_progress_meta() {
+        ?>
+        <div class="progress-meta">
+            <div class="progress-meta__item">
+                <span class="progress-meta__label"><?php _e('Total Items', 'wpml-migration-fixer'); ?></span>
+                <span class="progress-meta__value" data-progress-role="total-count">0</span>
+            </div>
+            <div class="progress-meta__item">
+                <span class="progress-meta__label"><?php _e('Processed', 'wpml-migration-fixer'); ?></span>
+                <span class="progress-meta__value" data-progress-role="processed-count">0</span>
+            </div>
+            <div class="progress-meta__item">
+                <span class="progress-meta__label"><?php _e('Issues Found', 'wpml-migration-fixer'); ?></span>
+                <span class="progress-meta__value" data-progress-role="issues-total">0</span>
+            </div>
+            <div class="progress-meta__item">
+                <span class="progress-meta__label"><?php _e('Issues Fixed', 'wpml-migration-fixer'); ?></span>
+                <span class="progress-meta__value" data-progress-role="issues-fixed">0</span>
+            </div>
+            <div class="progress-meta__item">
+                <span class="progress-meta__label"><?php _e('Issues Remaining', 'wpml-migration-fixer'); ?></span>
+                <span class="progress-meta__value" data-progress-role="issues-remaining">0</span>
+            </div>
+        </div>
+        <?php
     }
 }
