@@ -420,7 +420,8 @@ class WPML_To_Polylang_Migration_Verifier {
             }
 
             // Check for posts with WRONG language (mismatch between WPML and Polylang)
-            $posts_wrong_language = $this->wpdb->get_var("
+            // First count posts with correct matching languages
+            $posts_correct_language = $this->wpdb->get_var("
                 SELECT COUNT(DISTINCT p.ID)
                 FROM {$this->wpdb->posts} p
                 JOIN {$this->wpdb->term_relationships} tr ON tr.object_id = p.ID
@@ -432,11 +433,16 @@ class WPML_To_Polylang_Migration_Verifier {
                 AND p.post_status IN ('publish', 'draft', 'private')
                 AND tt.taxonomy = 'language'
                 AND wpml.language_code IS NOT NULL
-                AND t.slug != wpml.language_code
-                AND t.slug != REPLACE(wpml.language_code, '_', '-')
-                AND wpml.language_code != REPLACE(t.slug, '-', '_')
+                AND (
+                    t.slug = wpml.language_code
+                    OR t.slug = REPLACE(wpml.language_code, '_', '-')
+                    OR wpml.language_code = REPLACE(t.slug, '-', '_')
+                )
             ");
-            $verification['posts_wrong_language'] = intval($posts_wrong_language);
+
+            // Wrong language = posts with language - posts with correct language
+            $posts_wrong_language = max(0, $verification['posts_with_language'] - intval($posts_correct_language));
+            $verification['posts_wrong_language'] = $posts_wrong_language;
 
             if ($verification['posts_wrong_language'] > 0) {
                 $verification['critical_issues'] += $verification['posts_wrong_language'];
@@ -568,7 +574,8 @@ class WPML_To_Polylang_Migration_Verifier {
             }
 
             // Check for terms with WRONG language (mismatch between WPML and Polylang)
-            $terms_wrong_language = $this->wpdb->get_var("
+            // First count terms with correct matching languages
+            $terms_correct_language = $this->wpdb->get_var("
                 SELECT COUNT(DISTINCT t.term_id)
                 FROM {$this->wpdb->terms} t
                 JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
@@ -580,11 +587,16 @@ class WPML_To_Polylang_Migration_Verifier {
                 WHERE tt.taxonomy IN ('category', 'post_tag', 'product_cat', 'product_tag', 'doc_category')
                 AND tl.taxonomy = 'term_language'
                 AND wpml.language_code IS NOT NULL
-                AND lang.slug != wpml.language_code
-                AND lang.slug != REPLACE(wpml.language_code, '_', '-')
-                AND wpml.language_code != REPLACE(lang.slug, '-', '_')
+                AND (
+                    lang.slug = wpml.language_code
+                    OR lang.slug = REPLACE(wpml.language_code, '_', '-')
+                    OR wpml.language_code = REPLACE(lang.slug, '-', '_')
+                )
             ");
-            $verification['terms_wrong_language'] = intval($terms_wrong_language);
+
+            // Wrong language = terms with language - terms with correct language
+            $terms_wrong_language = max(0, $verification['terms_with_language'] - intval($terms_correct_language));
+            $verification['terms_wrong_language'] = $terms_wrong_language;
 
             if ($verification['terms_wrong_language'] > 0) {
                 $verification['critical_issues'] += $verification['terms_wrong_language'];
