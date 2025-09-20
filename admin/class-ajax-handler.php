@@ -2329,6 +2329,8 @@ class WPML_Fixer_Ajax_Handler {
         $this->verify_request(true);
 
         try {
+            global $wpdb;
+
             $offset = intval($_POST['offset'] ?? 0);
             $batch_size = intval($_POST['batch_size'] ?? 100);
 
@@ -2346,9 +2348,13 @@ class WPML_Fixer_Ajax_Handler {
                 WHERE taxonomy LIKE 'pa_%'
             ");
 
-            $issues_before = 0;
+            $attributes_sql = '';
             if (!empty($attributes)) {
                 $attributes_sql = "'" . implode("','", array_map('esc_sql', $attributes)) . "'";
+            }
+
+            $issues_before = 0;
+            if ($attributes_sql !== '') {
                 $issues_before = (int) $wpdb->get_var("
                     SELECT COUNT(DISTINCT t.term_id)
                     FROM {$wpdb->terms} t
@@ -2383,8 +2389,7 @@ class WPML_Fixer_Ajax_Handler {
             $continue = ($processed_total < $total) && ($items_processed > 0);
 
             $issues_remaining = $issues_before;
-            if (!empty($attributes)) {
-                $attributes_sql = "'" . implode("','", array_map('esc_sql', $attributes)) . "'";
+            if ($attributes_sql !== '') {
                 $issues_remaining = (int) $wpdb->get_var("
                     SELECT COUNT(DISTINCT t.term_id)
                     FROM {$wpdb->terms} t
