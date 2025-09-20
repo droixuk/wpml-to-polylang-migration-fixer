@@ -9,7 +9,7 @@ jQuery(document).ready(function($) {
     
     // Set up default properties
     $.extend(window.wpmlFixerAjax, {
-        debugEnabled: false,
+        debugEnabled: true, // Temporarily enable for debugging
         ajaxUrl: '',
         nonce: '',
         nonceName: '',
@@ -149,14 +149,36 @@ jQuery(document).ready(function($) {
             var self = this;
             elements = elements || {};
 
+            // Also log to browser console
+            console.log('=== WPML FIXER REGISTER PROGRESS TYPE ===');
+            console.log('Type:', type);
+
+            self.debugLog('=== REGISTER PROGRESS TYPE DEBUG ===');
+            self.debugLog('Registering type: ' + type);
+
+            // Try multiple selectors
+            self.debugLog('Looking for wrapper with selector: .progress-wrapper[data-progress-for="' + type + '"]');
             var $wrapper = elements.wrapper ? $(elements.wrapper) : $('.progress-wrapper[data-progress-for="' + type + '"]');
+            self.debugLog('Found with data-progress-for: ' + $wrapper.length);
+
             if (!$wrapper.length) {
+                self.debugLog('Looking for wrapper with selector: #progress-' + type);
                 $wrapper = $('#progress-' + type);
+                self.debugLog('Found with ID: ' + $wrapper.length);
             }
+
             if (!$wrapper.length) {
-                if (self.debugEnabled) {
-                    self.debugLog('No progress wrapper found for type "' + type + '"', 'warning');
-                }
+                self.debugLog('ERROR: No progress wrapper found for type "' + type + '"', 'error');
+
+                // Debug: List all progress wrappers on page
+                var allWrappers = $('.progress-wrapper');
+                self.debugLog('All progress wrappers on page: ' + allWrappers.length);
+                allWrappers.each(function() {
+                    var id = $(this).attr('id');
+                    var dataFor = $(this).attr('data-progress-for');
+                    self.debugLog('  - ID: ' + id + ', data-progress-for: ' + dataFor);
+                });
+
                 return null;
             }
             $wrapper = $wrapper.first();
@@ -344,6 +366,15 @@ jQuery(document).ready(function($) {
         resumeProcess: function(processId, savedState) {
             var self = this;
 
+            // Also log to browser console for easier debugging
+            console.log('=== WPML FIXER RESUME PROCESS DEBUG ===');
+            console.log('Process ID:', processId);
+            console.log('Saved State:', savedState);
+
+            self.debugLog('=== RESUME PROCESS DEBUG START ===');
+            self.debugLog('Process ID: ' + processId);
+            self.debugLog('Looking for wrapper: #progress-' + processId + ' or [data-progress-for="' + processId + '"]');
+
             // Set the state to running
             savedState.running = true;
             savedState.preview = false;
@@ -353,14 +384,35 @@ jQuery(document).ready(function($) {
 
             // Initialize and show progress controller
             var controller = self.getProgressController(processId);
+            self.debugLog('Initial controller lookup: ' + (controller ? 'found' : 'not found'));
+
             if (!controller) {
+                self.debugLog('Registering new progress type for: ' + processId);
                 controller = self.registerProgressType(processId);
+                self.debugLog('After registration, controller: ' + (controller ? 'created' : 'failed'));
             }
 
             if (controller) {
+                self.debugLog('Controller details:');
+                self.debugLog('- Wrapper exists: ' + (controller.wrapper && controller.wrapper.length > 0));
+                self.debugLog('- Button exists: ' + (controller.button && controller.button.length > 0));
+                self.debugLog('- Fill exists: ' + (controller.fill && controller.fill.length > 0));
+
                 // Show the progress wrapper
                 if (controller.wrapper && controller.wrapper.length) {
+                    self.debugLog('Showing wrapper. Currently visible: ' + controller.wrapper.is(':visible'));
                     controller.wrapper.stop(true, true).show();
+                    self.debugLog('After show(), visible: ' + controller.wrapper.is(':visible'));
+
+                    // Force visibility in case CSS is hiding it
+                    controller.wrapper.css({
+                        'display': 'block',
+                        'visibility': 'visible',
+                        'opacity': '1'
+                    });
+                    self.debugLog('Forced CSS display. Now visible: ' + controller.wrapper.is(':visible'));
+                } else {
+                    self.debugLog('ERROR: No wrapper element found!');
                 }
 
                 // Update progress display
@@ -370,6 +422,7 @@ jQuery(document).ready(function($) {
 
                 if (controller.fill && controller.fill.length) {
                     controller.fill.css('width', percent + '%');
+                    self.debugLog('Progress bar set to ' + percent + '%');
                 }
 
                 if (controller.text && controller.text.length) {
@@ -384,7 +437,23 @@ jQuery(document).ready(function($) {
                 if (controller.status && controller.status.length) {
                     controller.status.html('<div class="status-message status-info">Resuming from item ' + progress + '...</div>');
                 }
+
+                // Update button state
+                if (controller.button && controller.button.length) {
+                    controller.button.prop('disabled', true).addClass('is-busy');
+                    var originalText = controller.button.data('original-text');
+                    if (!originalText) {
+                        originalText = controller.button.text();
+                        controller.button.data('original-text', originalText);
+                    }
+                    controller.button.text('Processing...');
+                    self.debugLog('Button updated to Processing state');
+                }
+            } else {
+                self.debugLog('ERROR: Could not get/create controller for ' + processId);
             }
+
+            self.debugLog('=== RESUME PROCESS DEBUG END ===');
 
             // Continue processing after a short delay to ensure UI is ready
             setTimeout(function() {
