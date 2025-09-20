@@ -990,7 +990,26 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                 'faq_categories_without_pll' => 0
             ],
             'terms_per_language' => [],
-            'recommendations' => []
+            'recommendations' => [],
+            // Enhanced detailed breakdowns
+            'detailed_posts' => [],
+            'detailed_terms' => [],
+            'content_groups' => [
+                'core' => [],
+                'woocommerce' => [],
+                'betterdocs' => [],
+                'acf' => [],
+                'other' => []
+            ],
+            'translation_groups' => [
+                'posts' => [],
+                'terms' => []
+            ],
+            'string_translations' => [
+                'wpml_strings' => 0,
+                'polylang_strings' => 0,
+                'unconverted' => 0
+            ]
         ];
 
         try {
@@ -1078,6 +1097,211 @@ class WPML_To_Polylang_Fixer_Database_Helper {
             foreach ($terms_per_lang as $tpl) {
                 $results['terms_per_language'][$tpl->slug] = (int)$tpl->terms;
             }
+
+            // ENHANCED: Detailed post type breakdowns
+            $post_types = get_post_types(['public' => true], 'objects');
+            foreach ($post_types as $post_type) {
+                $type_key = $post_type->name;
+
+                // Total posts of this type
+                $total = $wpdb->get_var($wpdb->prepare("
+                    SELECT COUNT(*) FROM {$wpdb->posts}
+                    WHERE post_type = %s AND post_status IN ('publish','draft','private')
+                ", $type_key));
+
+                // Posts with language
+                $with_lang = $wpdb->get_var($wpdb->prepare("
+                    SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
+                    JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+                    JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                    WHERE p.post_type = %s
+                    AND p.post_status IN ('publish','draft','private')
+                    AND tt.taxonomy = 'language'
+                ", $type_key));
+
+                // WPML translation groups
+                $wpml_groups = 0;
+                if ($this->wpml_tables_exist()) {
+                    $wpml_groups = $wpdb->get_var($wpdb->prepare("
+                        SELECT COUNT(DISTINCT trid) FROM {$this->icl_table}
+                        WHERE element_type = %s
+                        AND trid IN (
+                            SELECT trid FROM {$this->icl_table}
+                            GROUP BY trid HAVING COUNT(*) > 1
+                        )
+                    ", 'post_' . $type_key));
+                }
+
+                // Polylang translation groups
+                $pll_groups = $wpdb->get_var($wpdb->prepare("
+                    SELECT COUNT(DISTINCT tr.term_taxonomy_id)
+                    FROM {$wpdb->posts} p
+                    JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+                    JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                    WHERE p.post_type = %s
+                    AND tt.taxonomy = 'post_translations'
+                ", $type_key));
+
+                $results['detailed_posts'][$type_key] = [
+                    'label' => $post_type->label,
+                    'total' => (int)$total,
+                    'with_language' => (int)$with_lang,
+                    'missing_language' => (int)($total - $with_lang),
+                    'wpml_groups' => (int)$wpml_groups,
+                    'pll_groups' => (int)$pll_groups
+                ];
+
+                // Categorize by plugin
+                if (in_array($type_key, ['product', 'product_variation', 'shop_order', 'shop_coupon'])) {
+                    $results['content_groups']['woocommerce'][] = $type_key;
+                } elseif (in_array($type_key, ['docs', 'betterdocs_faq'])) {
+                    $results['content_groups']['betterdocs'][] = $type_key;
+                } elseif (in_array($type_key, ['acf-field', 'acf-field-group'])) {
+                    $results['content_groups']['acf'][] = $type_key;
+                } elseif (in_array($type_key, ['post', 'page'])) {
+                    $results['content_groups']['core'][] = $type_key;
+                } else {
+                    $results['content_groups']['other'][] = $type_key;
+                }
+            }
+
+            // ENHANCED: Detailed taxonomy breakdowns
+            $taxonomies = get_taxonomies(['public' => true], 'objects');
+            foreach ($taxonomies as $taxonomy) {
+                if (in_array($taxonomy->name, ['language', 'term_language', 'post_translations', 'term_translations'])) {
+                    continue; // Skip Polylang internal taxonomies
+                }
+
+                $tax_key = $taxonomy->name;
+
+                // Total terms in this taxonomy
+                $total = $wpdb->get_var($wpdb->prepare("
+                    SELECT COUNT(*) FROM {$wpdb->term_taxonomy}
+                    WHERE taxonomy = %s
+                ", $tax_key));
+
+                // Terms with language
+                $with_lang = $wpdb->get_var($wpdb->prepare("
+                    SELECT COUNT(DISTINCT tt.term_id)
+                    FROM {$wpdb->term_taxonomy} tt
+                    JOIN {$wpdb->term_relationships} tr ON tr.object_id = tt.term_id
+                    JOIN {$wpdb->term_taxonomy} tl ON tl.term_taxonomy_id = tr.term_taxonomy_id
+                    WHERE tt.taxonomy = %s AND tl.taxonomy = 'term_language'
+                ", $tax_key));
+
+                // WPML translation groups
+                $wpml_groups = 0;
+                if ($this->wpml_tables_exist()) {
+                    $wpml_groups = $wpdb->get_var($wpdb->prepare("
+                        SELECT COUNT(DISTINCT trid) FROM {$this->icl_table}
+                        WHERE element_type = %s
+                        AND trid IN (
+                            SELECT trid FROM {$this->icl_table}
+                            GROUP BY trid HAVING COUNT(*) > 1
+                        )
+                    ", 'tax_' . $tax_key));
+                }
+
+                // Polylang translation groups
+                $pll_groups = $wpdb->get_var($wpdb->prepare("
+                    SELECT COUNT(DISTINCT tr.term_taxonomy_id)
+                    FROM {$wpdb->term_taxonomy} tt
+                    JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+                    JOIN {$wpdb->term_relationships} tr ON tr.object_id = t.term_id
+                    JOIN {$wpdb->term_taxonomy} ttrans ON ttrans.term_taxonomy_id = tr.term_taxonomy_id
+                    WHERE tt.taxonomy = %s AND ttrans.taxonomy = 'term_translations'
+                ", $tax_key));
+
+                $results['detailed_terms'][$tax_key] = [
+                    'label' => $taxonomy->label,
+                    'total' => (int)$total,
+                    'with_language' => (int)$with_lang,
+                    'missing_language' => (int)($total - $with_lang),
+                    'wpml_groups' => (int)$wpml_groups,
+                    'pll_groups' => (int)$pll_groups
+                ];
+            }
+
+            // String translations check
+            if ($this->wpml_tables_exist()) {
+                $results['string_translations']['wpml_strings'] = $wpdb->get_var("
+                    SELECT COUNT(*) FROM {$wpdb->prefix}icl_strings
+                ");
+
+                $results['string_translations']['unconverted'] = $wpdb->get_var("
+                    SELECT COUNT(*) FROM {$wpdb->prefix}icl_strings s
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM {$wpdb->prefix}polylang_mo_strings ms
+                        WHERE ms.original = s.value
+                    )
+                ");
+            }
+
+            if ($wpdb->get_var("SHOW TABLES LIKE '{$wpdb->prefix}polylang_mo_strings'")) {
+                $results['string_translations']['polylang_strings'] = $wpdb->get_var("
+                    SELECT COUNT(DISTINCT original) FROM {$wpdb->prefix}polylang_mo_strings
+                ");
+            }
+
+            // Translation groups summary
+            $results['translation_groups']['posts'] = [
+                'wpml_total' => 0,
+                'pll_total' => 0,
+                'unconverted' => 0
+            ];
+
+            $results['translation_groups']['terms'] = [
+                'wpml_total' => 0,
+                'pll_total' => 0,
+                'unconverted' => 0
+            ];
+
+            if ($this->wpml_tables_exist()) {
+                // WPML post translation groups
+                $results['translation_groups']['posts']['wpml_total'] = $wpdb->get_var("
+                    SELECT COUNT(DISTINCT trid) FROM {$this->icl_table}
+                    WHERE element_type LIKE 'post_%'
+                    AND trid IN (
+                        SELECT trid FROM {$this->icl_table}
+                        WHERE element_type LIKE 'post_%'
+                        GROUP BY trid HAVING COUNT(*) > 1
+                    )
+                ");
+
+                // WPML term translation groups
+                $results['translation_groups']['terms']['wpml_total'] = $wpdb->get_var("
+                    SELECT COUNT(DISTINCT trid) FROM {$this->icl_table}
+                    WHERE element_type LIKE 'tax_%'
+                    AND trid IN (
+                        SELECT trid FROM {$this->icl_table}
+                        WHERE element_type LIKE 'tax_%'
+                        GROUP BY trid HAVING COUNT(*) > 1
+                    )
+                ");
+            }
+
+            // Polylang post translation groups
+            $results['translation_groups']['posts']['pll_total'] = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->term_taxonomy}
+                WHERE taxonomy = 'post_translations'
+            ");
+
+            // Polylang term translation groups
+            $results['translation_groups']['terms']['pll_total'] = $wpdb->get_var("
+                SELECT COUNT(*) FROM {$wpdb->term_taxonomy}
+                WHERE taxonomy = 'term_translations'
+            ");
+
+            // Calculate unconverted groups
+            $results['translation_groups']['posts']['unconverted'] = max(0,
+                $results['translation_groups']['posts']['wpml_total'] -
+                $results['translation_groups']['posts']['pll_total']
+            );
+
+            $results['translation_groups']['terms']['unconverted'] = max(0,
+                $results['translation_groups']['terms']['wpml_total'] -
+                $results['translation_groups']['terms']['pll_total']
+            );
 
             // Generate recommendations
             if ($results['posts_without_pll'] > 0) {

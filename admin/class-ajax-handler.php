@@ -1529,13 +1529,18 @@ class WPML_Fixer_Ajax_Handler {
                 // Extract variables for the view
                 extract(array('results' => $results));
                 
-                // Use the view file instead of hardcoded method
-                $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/verification-results-comprehensive.php';
+                // Use the view file - try detailed first, fallback to comprehensive
+                $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/verification-results-detailed.php';
+                if (!file_exists($view_file)) {
+                    // Fallback to comprehensive view
+                    $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/verification-results-comprehensive.php';
+                }
+
                 if (file_exists($view_file)) {
                     include $view_file;
                 } else {
                     echo '<div class="status-message status-error">';
-                    echo __('Comprehensive verification results template not found.', 'wpml-to-polylang-migration-fixer');
+                    echo __('Verification results template not found.', 'wpml-to-polylang-migration-fixer');
                     echo '</div>';
                 }
                 $html = ob_get_clean();
