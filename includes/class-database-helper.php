@@ -14,18 +14,35 @@ if (!defined('ABSPATH')) {
 }
 
 class WPML_To_Polylang_Fixer_Database_Helper {
-    
+
     private $logger;
     private $icl_table;
-    
+    private $debug_collector = null;
+
     public function __construct() {
         global $wpdb;
         $this->icl_table = $wpdb->prefix . 'icl_translations';
-        
+
         // Logger will be initialized if class exists
         if (class_exists('WPML_To_Polylang_Fixer_Debug_Logger')) {
             $this->logger = new WPML_To_Polylang_Fixer_Debug_Logger();
         }
+    }
+
+    /**
+     * Initialize debug collector
+     */
+    public function init_debug_collector($enabled = false) {
+        if (class_exists('WPML_Fixer_Debug_Collector')) {
+            $this->debug_collector = new WPML_Fixer_Debug_Collector($enabled);
+        }
+    }
+
+    /**
+     * Get debug data from collector
+     */
+    public function get_debug_data() {
+        return $this->debug_collector ? $this->debug_collector->get_debug_data() : null;
     }
     
     public function wpml_tables_exist() {
@@ -495,6 +512,32 @@ class WPML_To_Polylang_Fixer_Database_Helper {
     public function ensure_term_language_buckets() {
         global $wpdb;
 
+        // DEBUG START
+        if ($this->debug_collector) {
+            $this->debug_collector->push_context('Ensuring term language buckets');
+        }
+
+        // First, find missing buckets
+        $find_query = "
+            SELECT t.term_id, t.name
+            FROM {$wpdb->terms} t
+            JOIN {$wpdb->term_taxonomy} tl ON tl.term_id=t.term_id AND tl.taxonomy='language'
+            LEFT JOIN {$wpdb->term_taxonomy} tl2 ON tl2.term_id=t.term_id AND tl2.taxonomy='term_language'
+            WHERE tl2.term_id IS NULL
+        ";
+
+        $missing = $wpdb->get_results($find_query);
+
+        if ($this->debug_collector) {
+            $this->debug_collector->log_query($find_query, 'Finding terms without language buckets', $missing);
+            $this->debug_collector->log_operation('scan_missing_buckets',
+                sprintf('Found %d terms without language buckets', count($missing)),
+                'info',
+                ['term_ids' => wp_list_pluck($missing, 'term_id')]
+            );
+        }
+        // DEBUG END
+
         $created = $wpdb->query("
             INSERT IGNORE INTO {$wpdb->term_taxonomy} (term_id, taxonomy, description, parent, count)
             SELECT t.term_id, 'term_language', '', 0, 0
@@ -503,6 +546,18 @@ class WPML_To_Polylang_Fixer_Database_Helper {
             LEFT JOIN {$wpdb->term_taxonomy} tl2 ON tl2.term_id=t.term_id AND tl2.taxonomy='term_language'
             WHERE tl2.term_id IS NULL
         ");
+
+        // DEBUG START
+        if ($this->debug_collector) {
+            $insert_query = $wpdb->last_query;
+            $this->debug_collector->log_query($insert_query, 'Creating missing language buckets', $created);
+            $this->debug_collector->log_operation('create_buckets',
+                sprintf('Created %d language buckets', $created),
+                $created > 0 ? 'success' : 'info'
+            );
+            $this->debug_collector->pop_context();
+        }
+        // DEBUG END
 
         if ($this->logger) {
             $this->logger->log("Created {$created} missing term_language buckets", 'info');

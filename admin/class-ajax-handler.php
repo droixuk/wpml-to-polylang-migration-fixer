@@ -1694,12 +1694,31 @@ class WPML_Fixer_Ajax_Handler {
         $this->verify_request(true);
 
         try {
+            // DEBUG START
+            $debug_enabled = !empty($_POST['debug']) && get_option('wpml_fixer_debug_mode', false);
+            if ($debug_enabled) {
+                require_once WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'includes/class-debug-collector.php';
+                $this->db_helper->init_debug_collector(true);
+            }
+            // DEBUG END
+
             $created = $this->db_helper->ensure_term_language_buckets();
 
-            wp_send_json_success([
+            $response = [
                 'message' => "Created {$created} missing term_language buckets",
                 'created' => $created
-            ]);
+            ];
+
+            // DEBUG START
+            if ($debug_enabled) {
+                $debug_data = $this->db_helper->get_debug_data();
+                if ($debug_data) {
+                    $response['debug'] = $debug_data;
+                }
+            }
+            // DEBUG END
+
+            wp_send_json_success($response);
         } catch (Exception $e) {
             if ($this->logger) {
                 $this->logger->log_error("Failed to ensure buckets", $e);

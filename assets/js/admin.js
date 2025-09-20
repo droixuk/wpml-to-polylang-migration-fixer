@@ -793,11 +793,11 @@ jQuery(document).ready(function($) {
          */
         createRequestData: function(action, additionalData) {
             var requestData = { action: action };
-            
+
             if (additionalData && typeof additionalData === 'object') {
                 $.extend(requestData, additionalData);
             }
-            
+
             // Add nonce if available
             if (this.nonceName && this.nonce) {
                 requestData[this.nonceName] = this.nonce;
@@ -805,7 +805,14 @@ jQuery(document).ready(function($) {
             } else {
                 this.debugLog('Warning: No nonce available for request', 'warning');
             }
-            
+
+            // DEBUG CODE START
+            // Add debug flag if debug mode is enabled
+            if (this.debugEnabled) {
+                requestData.debug = 'true';
+            }
+            // DEBUG CODE END
+
             return requestData;
         },
         
@@ -901,8 +908,15 @@ jQuery(document).ready(function($) {
          */
         ensureBuckets: function() {
             var self = this;
-            $("#btn-ensure-buckets").prop("disabled", true);
+            var $button = $("#btn-ensure-buckets");
+            $button.prop("disabled", true);
             self.debugLog('Ensuring term_language buckets...');
+
+            // DEBUG CODE START
+            // Find the progress area to add debug window
+            var $progressArea = $button.closest('.fix-section');
+            var $debugWindow = null;
+            // DEBUG CODE END
 
             var requestData = self.createRequestData("wmf_ensure_buckets");
 
@@ -911,6 +925,22 @@ jQuery(document).ready(function($) {
                     if (response && response.success) {
                         self.showTemporaryMessage(response.data.message, 'success');
                         self.debugLog('✅ ' + response.data.message);
+
+                        // DEBUG CODE START
+                        // Display debug window if debug data is present
+                        if (self.debugEnabled && response.data.debug) {
+                            if (!$debugWindow) {
+                                $progressArea.append(self.buildDebugWindow());
+                                $debugWindow = $progressArea.find('[data-debug-window]');
+                            }
+                            self.updateDebugWindow($debugWindow, response.data.debug);
+                            $debugWindow.show();
+                            // Auto-expand if it was collapsed
+                            if ($debugWindow.hasClass('collapsed')) {
+                                $debugWindow.find('.debug-toggle').click();
+                            }
+                        }
+                        // DEBUG CODE END
                     } else {
                         self.showTemporaryMessage('Failed to ensure buckets', 'error');
                         self.debugLog('❌ Failed to ensure buckets', 'error');
@@ -921,7 +951,7 @@ jQuery(document).ready(function($) {
                     self.debugLog('❌ Request failed: ' + error, 'error');
                 })
                 .always(function() {
-                    $("#btn-ensure-buckets").prop("disabled", false);
+                    $button.prop("disabled", false);
                 });
         },
 
@@ -1254,7 +1284,8 @@ jQuery(document).ready(function($) {
                             fixed: state.fixed,
                             message: result.message,
                             issues_total: state.issuesTotal,
-                            issues_remaining: state.issuesRemaining
+                            issues_remaining: state.issuesRemaining,
+                            debug: result.debug  // DEBUG CODE: Pass debug data
                         });
 
                         self.debugLog('Batch completed for ' + processId + ': processed=' + result.processed + ', fixed=' + (result.fixed || 0) + ', continue=' + result.continue);
@@ -1401,6 +1432,21 @@ jQuery(document).ready(function($) {
                         remaining: data.issues_remaining !== undefined ? data.issues_remaining : controller.counts.issues_remaining
                     });
 
+                    // DEBUG CODE START
+                    // Add debug window if debug data is present
+                    if (self.debugEnabled && data.debug) {
+                        var $debugWindow = progressWrapper.find('[data-debug-window]');
+                        if (!$debugWindow.length) {
+                            progressWrapper.append(self.buildDebugWindow());
+                            $debugWindow = progressWrapper.find('[data-debug-window]');
+                        }
+                        self.updateDebugWindow($debugWindow, data.debug);
+                        if ($debugWindow.hasClass('collapsed')) {
+                            $debugWindow.show();
+                        }
+                    }
+                    // DEBUG CODE END
+
                     // Enhanced status message with clear counts
                     var statusMessage = data.message || 'Processing...';
 
@@ -1516,17 +1562,238 @@ jQuery(document).ready(function($) {
         showTemporaryMessage: function(message, type) {
             type = type || 'info';
             var className = 'status-' + type;
-            
+
             var messageDiv = $('<div class="status-message ' + className + '" style="position: fixed; top: 20px; right: 20px; z-index: 9999; padding: 15px; border-radius: 5px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">' + message + '</div>');
-            
+
             $('body').append(messageDiv);
-            
+
             setTimeout(function() {
                 messageDiv.fadeOut(600, function() {
                     messageDiv.remove();
                 });
             }, 12000);
         },
+
+        // DEBUG CODE START
+        /**
+         * Build debug window HTML
+         */
+        buildDebugWindow: function() {
+            if (!this.debugEnabled) return '';
+
+            return '<div class="wpml-debug-window collapsed" data-debug-window>' +
+                '<div class="debug-header">' +
+                '<span class="debug-title">🔍 Debug Output</span>' +
+                '<button type="button" class="debug-toggle" onclick="wpmlFixerAjax.toggleDebugWindow(this)">' +
+                '<span class="dashicons dashicons-arrow-down-alt2"></span>' +
+                '</button>' +
+                '<button type="button" class="debug-clear" onclick="wpmlFixerAjax.clearDebugWindow(this)">Clear</button>' +
+                '<button type="button" class="debug-copy" onclick="wpmlFixerAjax.copyDebugContent(this)">Copy</button>' +
+                '</div>' +
+                '<div class="debug-body" style="display:none;">' +
+                '<div class="debug-section debug-queries"></div>' +
+                '<div class="debug-section debug-operations"></div>' +
+                '<div class="debug-section debug-summary"></div>' +
+                '</div>' +
+                '</div>';
+        },
+
+        /**
+         * Update debug window with new data
+         */
+        updateDebugWindow: function($window, debugData) {
+            if (!debugData || !$window.length) return;
+
+            var queriesHtml = this.formatQueries(debugData.queries || []);
+            var opsHtml = this.formatOperations(debugData.operations || []);
+            var summaryHtml = this.formatSummary(debugData.summary || {});
+
+            $window.find('.debug-queries').html(queriesHtml);
+            $window.find('.debug-operations').html(opsHtml);
+            $window.find('.debug-summary').html(summaryHtml);
+        },
+
+        /**
+         * Format SQL queries for display
+         */
+        formatQueries: function(queries) {
+            if (!queries.length) return '<h4>SQL Queries</h4><p style="color: #858585;">No queries executed</p>';
+
+            var html = '<h4>SQL Queries (' + queries.length + ')</h4>';
+            var self = this;
+
+            queries.forEach(function(query, index) {
+                var stats = [];
+                if (query.rows > 0) stats.push(query.rows + ' rows');
+                if (query.affected > 0) stats.push(query.affected + ' affected');
+                if (query.time) stats.push(query.time + 'ms');
+
+                html += '<div class="debug-query-item">' +
+                    '<div class="query-header">' +
+                    '<span class="query-number">[' + (index + 1) + ']</span>' +
+                    '<span class="query-context">' + self.escapeHtml(query.context || '') + '</span>' +
+                    '<span class="query-stats">' + stats.join(' | ') + '</span>' +
+                    '</div>' +
+                    '<pre class="query-sql">' + self.highlightSQL(query.sql || query.raw_sql || '') + '</pre>' +
+                    '</div>';
+            });
+
+            return html;
+        },
+
+        /**
+         * Format operations for display
+         */
+        formatOperations: function(operations) {
+            if (!operations.length) return '<h4>Operations</h4><p style="color: #858585;">No operations logged</p>';
+
+            var html = '<h4>Operations (' + operations.length + ')</h4><div class="debug-operations">';
+            var self = this;
+
+            operations.forEach(function(op) {
+                var statusIcon = '•';
+                if (op.status === 'success') statusIcon = '✅';
+                if (op.status === 'warning') statusIcon = '⚠️';
+                if (op.status === 'error') statusIcon = '❌';
+                if (op.status === 'info') statusIcon = 'ℹ️';
+
+                html += '<div class="debug-operation ' + op.status + '">' +
+                    statusIcon + ' ' +
+                    '<span class="operation-action">' + self.escapeHtml(op.action || '') + '</span>' +
+                    '<span class="operation-details">' + self.escapeHtml(op.details || '') + '</span>' +
+                    '</div>';
+            });
+
+            html += '</div>';
+            return html;
+        },
+
+        /**
+         * Format summary statistics
+         */
+        formatSummary: function(summary) {
+            if (!summary || !Object.keys(summary).length) return '';
+
+            var html = '<h4>Summary</h4><div class="debug-summary"><div class="debug-summary-grid">';
+
+            if (summary.total_queries !== undefined) {
+                html += '<div class="debug-summary-item">' +
+                    '<span class="debug-summary-label">Queries:</span>' +
+                    '<span class="debug-summary-value">' + summary.total_queries + '</span>' +
+                    '</div>';
+            }
+
+            if (summary.execution_time !== undefined) {
+                html += '<div class="debug-summary-item">' +
+                    '<span class="debug-summary-label">Time:</span>' +
+                    '<span class="debug-summary-value">' + summary.execution_time + 'ms</span>' +
+                    '</div>';
+            }
+
+            if (summary.memory_used) {
+                html += '<div class="debug-summary-item">' +
+                    '<span class="debug-summary-label">Memory:</span>' +
+                    '<span class="debug-summary-value">' + summary.memory_used + '</span>' +
+                    '</div>';
+            }
+
+            if (summary.memory_peak) {
+                html += '<div class="debug-summary-item">' +
+                    '<span class="debug-summary-label">Peak:</span>' +
+                    '<span class="debug-summary-value">' + summary.memory_peak + '</span>' +
+                    '</div>';
+            }
+
+            html += '</div></div>';
+            return html;
+        },
+
+        /**
+         * Highlight SQL syntax
+         */
+        highlightSQL: function(sql) {
+            if (!sql) return '';
+
+            // Escape HTML first
+            sql = this.escapeHtml(sql);
+
+            // Highlight keywords
+            var keywords = ['SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'INNER JOIN', 'RIGHT JOIN',
+                'INSERT', 'INTO', 'UPDATE', 'DELETE', 'VALUES', 'SET', 'AND', 'OR', 'NOT',
+                'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'AS', 'ON', 'IN', 'EXISTS',
+                'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'DISTINCT', 'HAVING', 'UNION', 'ALL'];
+
+            keywords.forEach(function(keyword) {
+                var regex = new RegExp('\\b(' + keyword + ')\\b', 'gi');
+                sql = sql.replace(regex, '<span class="sql-keyword">$1</span>');
+            });
+
+            // Highlight strings
+            sql = sql.replace(/'([^']*)'/g, '<span class="sql-string">\'$1\'</span>');
+
+            // Highlight numbers
+            sql = sql.replace(/\b(\d+)\b/g, '<span class="sql-number">$1</span>');
+
+            // Highlight table names (wp_*)
+            sql = sql.replace(/\b(wp_\w+)\b/g, '<span class="sql-table">$1</span>');
+
+            return sql;
+        },
+
+        /**
+         * Toggle debug window visibility
+         */
+        toggleDebugWindow: function(button) {
+            var $window = $(button).closest('.wpml-debug-window');
+            var $body = $window.find('.debug-body');
+            var $icon = $(button).find('.dashicons');
+
+            if ($window.hasClass('collapsed')) {
+                $window.removeClass('collapsed');
+                $body.slideDown(300);
+                $icon.removeClass('dashicons-arrow-down-alt2').addClass('dashicons-arrow-up-alt2');
+            } else {
+                $window.addClass('collapsed');
+                $body.slideUp(300);
+                $icon.removeClass('dashicons-arrow-up-alt2').addClass('dashicons-arrow-down-alt2');
+            }
+        },
+
+        /**
+         * Clear debug window content
+         */
+        clearDebugWindow: function(button) {
+            var $window = $(button).closest('.wpml-debug-window');
+            $window.find('.debug-queries').html('<h4>SQL Queries</h4><p style="color: #858585;">Cleared</p>');
+            $window.find('.debug-operations').html('<h4>Operations</h4><p style="color: #858585;">Cleared</p>');
+            $window.find('.debug-summary').html('');
+        },
+
+        /**
+         * Copy debug content to clipboard
+         */
+        copyDebugContent: function(button) {
+            var $window = $(button).closest('.wpml-debug-window');
+            var $body = $window.find('.debug-body');
+
+            // Get text content
+            var text = '=== DEBUG OUTPUT ===\n\n';
+            $body.find('.debug-section').each(function() {
+                text += $(this).text() + '\n\n';
+            });
+
+            // Create temporary textarea
+            var $temp = $('<textarea>').val(text).appendTo('body').select();
+            document.execCommand('copy');
+            $temp.remove();
+
+            // Show feedback
+            $(button).text('Copied!');
+            setTimeout(function() {
+                $(button).text('Copy');
+            }, 2000);
+        },
+        // DEBUG CODE END
         
         /**
          * Enhanced error display with debug info

@@ -1019,3 +1019,221 @@ body.wmf-modal-open {
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
+
+
+/* DEBUG STYLES START */
+/* Debug Window Styles - Only active when debug mode is enabled */
+.wpml-debug-window {
+    margin-top: 15px;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #d4d4d4;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+    font-size: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.wpml-debug-window .debug-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    background: #2d2d2d;
+    border-bottom: 1px solid #333;
+    gap: 10px;
+}
+
+.wpml-debug-window .debug-title {
+    flex-grow: 1;
+    font-weight: 600;
+    color: #e0e0e0;
+}
+
+.wpml-debug-window .debug-toggle,
+.wpml-debug-window .debug-clear,
+.wpml-debug-window .debug-copy {
+    background: #3c3c3c;
+    border: 1px solid #555;
+    color: #d4d4d4;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.wpml-debug-window .debug-toggle:hover,
+.wpml-debug-window .debug-clear:hover,
+.wpml-debug-window .debug-copy:hover {
+    background: #4a4a4a;
+    border-color: #666;
+}
+
+.wpml-debug-window .debug-body {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 15px;
+    background: #1e1e1e;
+}
+
+.wpml-debug-window .debug-section {
+    margin-bottom: 20px;
+}
+
+.wpml-debug-window .debug-section h4 {
+    color: #569cd6;
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 1px solid #333;
+    padding-bottom: 5px;
+}
+
+.debug-query-item {
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #252526;
+    border-radius: 3px;
+    border: 1px solid #333;
+}
+
+.query-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 11px;
+}
+
+.query-number {
+    color: #858585;
+    font-weight: bold;
+}
+
+.query-context {
+    color: #9cdcfe;
+    flex-grow: 1;
+    margin-left: 10px;
+}
+
+.query-stats {
+    color: #b5cea8;
+}
+
+.query-sql {
+    margin: 10px 0 0 0;
+    padding: 10px;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 3px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.4;
+}
+
+/* SQL Syntax Highlighting */
+.sql-keyword { color: #569cd6; font-weight: bold; }
+.sql-string { color: #ce9178; }
+.sql-number { color: #b5cea8; }
+.sql-function { color: #dcdcaa; }
+.sql-comment { color: #608b4e; font-style: italic; }
+.sql-table { color: #4ec9b0; }
+.sql-column { color: #9cdcfe; }
+
+/* Operations section */
+.debug-operations {
+    margin-top: 10px;
+}
+
+.debug-operation {
+    padding: 5px 10px;
+    margin-bottom: 5px;
+    border-left: 3px solid #333;
+    background: #252526;
+    font-size: 11px;
+}
+
+.debug-operation.success {
+    border-left-color: #4ec9b0;
+}
+
+.debug-operation.info {
+    border-left-color: #3794ff;
+}
+
+.debug-operation.warning {
+    border-left-color: #ce9178;
+}
+
+.debug-operation.error {
+    border-left-color: #f48771;
+}
+
+.operation-action {
+    color: #dcdcaa;
+    font-weight: bold;
+}
+
+.operation-details {
+    color: #d4d4d4;
+    margin-left: 10px;
+}
+
+/* Summary section */
+.debug-summary {
+    background: #252526;
+    padding: 10px;
+    border-radius: 3px;
+    margin-top: 10px;
+}
+
+.debug-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.debug-summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px;
+    background: #1e1e1e;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.debug-summary-label {
+    color: #858585;
+}
+
+.debug-summary-value {
+    color: #b5cea8;
+    font-weight: bold;
+}
+
+/* Scrollbar styling for debug window */
+.wpml-debug-window .debug-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.wpml-debug-window .debug-body::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+.wpml-debug-window .debug-body::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.wpml-debug-window .debug-body::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+/* Hide debug window by default in collapsed state */
+.wpml-debug-window.collapsed .debug-body {
+    display: none;
+}
+
+.wpml-debug-window.collapsed .debug-toggle .dashicons {
+    transform: rotate(-90deg);
+}
+/* DEBUG STYLES END */
