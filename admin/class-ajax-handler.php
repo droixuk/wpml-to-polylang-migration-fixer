@@ -1485,15 +1485,55 @@ class WPML_Fixer_Ajax_Handler {
     }
     
     /**
-     * Placeholder methods for future implementation
+     * Process WooCommerce products specifically
      */
     private function process_woocommerce($offset, $batch_size) {
+        global $wpdb;
+
+        // Get total products count
+        $total_products = $wpdb->get_var("
+            SELECT COUNT(*)
+            FROM {$wpdb->posts}
+            WHERE post_type = 'product'
+            AND post_status IN ('publish', 'draft', 'private')
+        ");
+
+        // Get products batch
+        $products = $wpdb->get_col($wpdb->prepare("
+            SELECT ID
+            FROM {$wpdb->posts}
+            WHERE post_type = 'product'
+            AND post_status IN ('publish', 'draft', 'private')
+            ORDER BY ID
+            LIMIT %d OFFSET %d
+        ", $batch_size, $offset));
+
+        $fixed = 0;
+        $processed = count($products);
+
+        if (!empty($products)) {
+            // Use existing fix_posts_batch method for products
+            if ($this->db_helper && method_exists($this->db_helper, 'fix_posts_batch')) {
+                $result = $this->db_helper->fix_posts_batch($products);
+                $fixed = isset($result['fixed']) ? (int)$result['fixed'] : 0;
+
+                if ($this->logger) {
+                    $this->logger->log("Fixed {$fixed} WooCommerce products in batch", 'info');
+                }
+            }
+        }
+
+        $continue = ($offset + $processed) < $total_products;
+
         return [
-            'total' => 0,
-            'processed' => 0,
-            'fixed' => 0,
-            'continue' => false,
-            'message' => 'WooCommerce processing - to be implemented'
+            'total' => (int)$total_products,
+            'processed' => $processed,
+            'fixed' => $fixed,
+            'continue' => $continue,
+            'message' => $continue
+                ? sprintf(__('Processing WooCommerce products: %d/%d', 'wpml-migration-fixer'), $offset + $processed, $total_products)
+                : sprintf(__('Completed fixing %d WooCommerce products', 'wpml-migration-fixer'), $fixed),
+            'next_offset' => $offset + $batch_size
         ];
     }
     
