@@ -127,7 +127,10 @@ class WPML_Fixer_UI_Renderer {
                         </div>
                     </div>
                 </div>
-                
+
+                <!-- Language Display Section -->
+                <?php $this->render_language_display(); ?>
+
                 <!-- Enhanced Verification Section -->
                 <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
                     <button id="btn-comprehensive-verify" class="wpml-btn wpml-btn-large" data-wmf-action="runComprehensiveVerification">
@@ -300,5 +303,127 @@ class WPML_Fixer_UI_Renderer {
         </div>
         <div class="progress-status" data-progress-role="status"></div>
         <?php
+    }
+
+    /**
+     * Render language display with flag icons
+     */
+    private function render_language_display() {
+        // Check if Polylang is active
+        if (!function_exists('pll_languages_list')) {
+            return;
+        }
+
+        $languages = pll_languages_list(['fields' => []]);
+        if (empty($languages)) {
+            return;
+        }
+
+        $flags_dir = WPML_FIXER_PLUGIN_URL . 'assets/images/flags/';
+        ?>
+        <div class="language-display-section" style="margin-top: 20px;">
+            <h3 style="margin-bottom: 10px; font-size: 14px; font-weight: 600; color: #23282d;">
+                <?php _e('🌍 Active Languages', 'wpml-migration-fixer'); ?>
+            </h3>
+            <div class="language-flags-container">
+                <?php foreach ($languages as $lang):
+                    $lang_code = $lang->slug;
+                    $lang_name = $lang->name;
+                    $locale = $lang->locale;
+
+                    // Map language codes to flag files
+                    $flag_code = $this->get_flag_code($lang_code, $locale);
+                    $flag_url = $flags_dir . $flag_code . '.png';
+                    $flag_svg = $flags_dir . $flag_code . '.svg';
+
+                    // Get post count for this language
+                    $post_count = $this->get_language_post_count($lang_code);
+                    ?>
+                    <div class="language-flag-item" title="<?php echo esc_attr($lang_name . ' (' . $lang_code . ') - ' . $post_count . ' posts'); ?>">
+                        <img src="<?php echo esc_url($flag_svg); ?>"
+                             alt="<?php echo esc_attr($lang_name); ?>"
+                             onerror="this.onerror=null; this.src='<?php echo esc_url($flag_url); ?>'"
+                             class="language-flag">
+                        <span class="language-label"><?php echo esc_html($lang_code); ?></span>
+                        <span class="language-count"><?php echo number_format($post_count); ?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Map language/locale codes to flag file names
+     */
+    private function get_flag_code($lang_code, $locale = '') {
+        // Special mappings for common language codes
+        $mappings = [
+            'en' => 'gb',  // English uses Great Britain flag
+            'en_US' => 'us', // US English
+            'en_GB' => 'gb', // British English
+            'en_CA' => 'ca', // Canadian English
+            'en_AU' => 'au', // Australian English
+            'zh' => 'cn',  // Chinese uses China flag
+            'zh_CN' => 'cn', // Simplified Chinese
+            'zh_TW' => 'tw', // Traditional Chinese (Taiwan)
+            'ja' => 'jp',  // Japanese uses Japan flag
+            'ko' => 'kr',  // Korean uses South Korea flag
+            'ar' => 'sa',  // Arabic uses Saudi Arabia flag
+            'hi' => 'in',  // Hindi uses India flag
+            'he' => 'il',  // Hebrew uses Israel flag
+            'fa' => 'ir',  // Persian/Farsi uses Iran flag
+            'da' => 'dk',  // Danish uses Denmark flag
+            'el' => 'gr',  // Greek uses Greece flag
+            'cs' => 'cz',  // Czech
+            'sv' => 'se',  // Swedish uses Sweden flag
+            'nb' => 'no',  // Norwegian Bokmål
+            'nn' => 'no',  // Norwegian Nynorsk
+            'pt_BR' => 'br', // Brazilian Portuguese
+            'pt_PT' => 'pt', // European Portuguese
+        ];
+
+        // Check direct mapping first
+        if (isset($mappings[$lang_code])) {
+            return $mappings[$lang_code];
+        }
+
+        // Check locale-based mapping
+        if (!empty($locale) && isset($mappings[$locale])) {
+            return $mappings[$locale];
+        }
+
+        // Extract country code from locale (e.g., fr_FR -> fr)
+        if (strlen($locale) >= 5 && strpos($locale, '_') !== false) {
+            $parts = explode('_', $locale);
+            $country = strtolower($parts[1]);
+            // Check if country-specific flag exists
+            if (file_exists(WPML_FIXER_PLUGIN_DIR . 'assets/images/flags/' . $country . '.svg')) {
+                return $country;
+            }
+        }
+
+        // Default to language code
+        return strtolower($lang_code);
+    }
+
+    /**
+     * Get post count for a specific language
+     */
+    private function get_language_post_count($lang_code) {
+        global $wpdb;
+
+        $count = $wpdb->get_var($wpdb->prepare("
+            SELECT COUNT(DISTINCT p.ID)
+            FROM {$wpdb->posts} p
+            JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+            JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+            JOIN {$wpdb->terms} t ON tt.term_id = t.term_id
+            WHERE tt.taxonomy = 'language'
+            AND t.slug = %s
+            AND p.post_status IN ('publish', 'draft', 'private', 'future')
+        ", $lang_code));
+
+        return intval($count);
     }
 }
