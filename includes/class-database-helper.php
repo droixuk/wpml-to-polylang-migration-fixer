@@ -832,7 +832,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
      * @param int $offset Offset for batching
      * @return array Results array
      */
-    public function fix_betterdocs_batch($type = 'posts', $batch_size = 50, $offset = 0) {
+    public function fix_betterdocs_batch($type = 'posts', $batch_size = 100, $offset = 0) {
         global $wpdb;
 
         $results = [
@@ -914,7 +914,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
      * @param int $offset Offset for batching
      * @return array Results array
      */
-    public function fix_woocommerce_attributes_batch($batch_size = 50, $offset = 0) {
+    public function fix_woocommerce_attributes_batch($batch_size = 100, $offset = 0) {
         global $wpdb;
 
         $results = [
@@ -1122,7 +1122,19 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                 // Posts with WRONG language (mismatch between WPML and Polylang)
                 $wrong_lang = 0;
                 if ($this->wpml_tables_exist()) {
-                    // Count posts that have BOTH WPML and Polylang languages but they match (are correct)
+                    $with_wpml_lang = $wpdb->get_var($wpdb->prepare("
+                        SELECT COUNT(DISTINCT p.ID)
+                        FROM {$wpdb->posts} p
+                        JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+                        JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                        JOIN {$this->icl_table} wpml ON wpml.element_id = p.ID
+                            AND wpml.element_type = %s
+                        WHERE p.post_type = %s
+                        AND p.post_status IN ('publish','draft','private')
+                        AND tt.taxonomy = 'language'
+                        AND wpml.language_code IS NOT NULL
+                    ", 'post_' . $type_key, $type_key));
+
                     $correct_lang = $wpdb->get_var($wpdb->prepare("
                         SELECT COUNT(DISTINCT p.ID)
                         FROM {$wpdb->posts} p
@@ -1142,9 +1154,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                         )
                     ", 'post_' . $type_key, $type_key));
 
-                    // Wrong language = posts with language in both systems - posts with matching languages
-                    $wrong_lang = $with_lang - $correct_lang;
-                    if ($wrong_lang < 0) $wrong_lang = 0;
+                    $wrong_lang = max(0, (int)$with_wpml_lang - (int)$correct_lang);
                 }
 
                 // WPML translation groups
@@ -1221,7 +1231,18 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                 // Terms with WRONG language (mismatch between WPML and Polylang)
                 $wrong_lang = 0;
                 if ($this->wpml_tables_exist()) {
-                    // Count terms that have BOTH WPML and Polylang languages but they match (are correct)
+                    $with_wpml_lang = $wpdb->get_var($wpdb->prepare("
+                        SELECT COUNT(DISTINCT tt.term_id)
+                        FROM {$wpdb->term_taxonomy} tt
+                        JOIN {$wpdb->term_relationships} tr ON tr.object_id = tt.term_id
+                        JOIN {$wpdb->term_taxonomy} tl ON tl.term_taxonomy_id = tr.term_taxonomy_id
+                        JOIN {$this->icl_table} wpml ON wpml.element_id = tt.term_taxonomy_id
+                            AND wpml.element_type = %s
+                        WHERE tt.taxonomy = %s
+                        AND tl.taxonomy = 'term_language'
+                        AND wpml.language_code IS NOT NULL
+                    ", 'tax_' . $tax_key, $tax_key));
+
                     $correct_lang = $wpdb->get_var($wpdb->prepare("
                         SELECT COUNT(DISTINCT tt.term_id)
                         FROM {$wpdb->term_taxonomy} tt
@@ -1240,9 +1261,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                         )
                     ", 'tax_' . $tax_key, $tax_key));
 
-                    // Wrong language = terms with language in both systems - terms with matching languages
-                    $wrong_lang = $with_lang - $correct_lang;
-                    if ($wrong_lang < 0) $wrong_lang = 0;
+                    $wrong_lang = max(0, (int)$with_wpml_lang - (int)$correct_lang);
                 }
 
                 // WPML translation groups

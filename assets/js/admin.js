@@ -1247,7 +1247,7 @@ jQuery(document).ready(function($) {
             var isComprehensive = typeof arg2 === 'string' && arg2.indexOf('wmf_') === 0;
             var action = isComprehensive ? arg2 : 'wpml_fixer_ajax_process';
             var offset = isComprehensive ? (typeof arg3 === 'number' ? arg3 : 0) : (typeof arg2 === 'number' ? arg2 : 0);
-            var batchSize = isComprehensive ? 50 : (typeof arg3 === 'number' ? arg3 : 20);
+            var batchSize = isComprehensive ? 100 : (typeof arg3 === 'number' ? arg3 : 40);
             var additionalData = isComprehensive ? (arg4 && typeof arg4 === 'object' ? arg4 : {}) : {};
 
             self.debugLog('Processing batch for ' + processId + ' - offset: ' + offset + ', batch: ' + batchSize + (isComprehensive ? ', action: ' + action : ''));

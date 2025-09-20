@@ -1755,7 +1755,7 @@ class WPML_Fixer_Ajax_Handler {
 
         try {
             $offset = intval($_POST['offset'] ?? 0);
-            $batch_size = intval($_POST['batch_size'] ?? 50);
+            $batch_size = intval($_POST['batch_size'] ?? 100);
             $preview = !empty($_POST['preview']);
 
             $pattern = isset($_POST['pattern']) ? sanitize_text_field(wp_unslash($_POST['pattern'])) : 'pll_%';
@@ -1817,7 +1817,7 @@ class WPML_Fixer_Ajax_Handler {
 
         try {
             $offset = intval($_POST['offset'] ?? 0);
-            $batch_size = intval($_POST['batch_size'] ?? 50);
+            $batch_size = intval($_POST['batch_size'] ?? 100);
 
             global $wpdb;
 
@@ -1945,7 +1945,7 @@ class WPML_Fixer_Ajax_Handler {
 
         try {
             $offset = intval($_POST['offset'] ?? 0);
-            $batch_size = intval($_POST['batch_size'] ?? 50);
+            $batch_size = intval($_POST['batch_size'] ?? 100);
 
             global $wpdb;
 
@@ -2096,7 +2096,7 @@ class WPML_Fixer_Ajax_Handler {
             }
 
             $offset = max(0, intval($_POST['offset'] ?? 0));
-            $batch_size = max(1, intval($_POST['batch_size'] ?? 50));
+            $batch_size = max(1, intval($_POST['batch_size'] ?? 100));
             $preview = !empty($_POST['preview']);
 
             global $wpdb;
@@ -2290,7 +2290,7 @@ class WPML_Fixer_Ajax_Handler {
 
         try {
             $offset = intval($_POST['offset'] ?? 0);
-            $batch_size = intval($_POST['batch_size'] ?? 50);
+            $batch_size = intval($_POST['batch_size'] ?? 100);
 
             $preview = !empty($_POST['preview']);
             $results = $this->db_helper->fix_woocommerce_attributes_batch($batch_size, $offset);

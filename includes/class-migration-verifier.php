@@ -13,6 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+
 class WPML_To_Polylang_Migration_Verifier {
     
     private $wpdb;
@@ -394,13 +395,22 @@ class WPML_To_Polylang_Migration_Verifier {
             }
             
             // Check posts with/without language
+            $post_types_to_check = get_post_types(['public' => true], 'names');
+            if (empty($post_types_to_check)) {
+                $post_types_to_check = ['post'];
+            }
+            $post_types_sql = "'" . implode("','", array_map('esc_sql', $post_types_to_check)) . "'";
+            $post_element_types_sql = "'" . implode("','", array_map(function($type){
+                return esc_sql('post_' . $type);
+            }, $post_types_to_check)) . "'";
+
             $posts_with_language = $this->wpdb->get_var("
                 SELECT COUNT(DISTINCT p.ID)
                 FROM {$this->wpdb->posts} p
                 JOIN {$this->wpdb->term_relationships} tr ON p.ID = tr.object_id
                 JOIN {$this->wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
                 WHERE tt.taxonomy = 'language'
-                AND p.post_type IN ('post', 'page', 'product', 'docs')
+                AND p.post_type IN ($post_types_sql)
                 AND p.post_status IN ('publish', 'draft', 'private')
             ");
             $verification['posts_with_language'] = intval($posts_with_language);
@@ -408,7 +418,7 @@ class WPML_To_Polylang_Migration_Verifier {
             $total_posts = $this->wpdb->get_var("
                 SELECT COUNT(*)
                 FROM {$this->wpdb->posts}
-                WHERE post_type IN ('post', 'page', 'product', 'docs')
+                WHERE post_type IN ($post_types_sql)
                 AND post_status IN ('publish', 'draft', 'private')
             ");
             
@@ -420,7 +430,19 @@ class WPML_To_Polylang_Migration_Verifier {
             }
 
             // Check for posts with WRONG language (mismatch between WPML and Polylang)
-            // First count posts with correct matching languages
+            $posts_with_wpml_language = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT p.ID)
+                FROM {$this->wpdb->posts} p
+                JOIN {$this->wpdb->term_relationships} tr ON tr.object_id = p.ID
+                JOIN {$this->wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                JOIN {$this->icl_table} wpml ON wpml.element_id = p.ID
+                    AND wpml.element_type IN ($post_element_types_sql)
+                WHERE p.post_type IN ($post_types_sql)
+                AND p.post_status IN ('publish', 'draft', 'private')
+                AND tt.taxonomy = 'language'
+                AND wpml.language_code IS NOT NULL
+            ");
+
             $posts_correct_language = $this->wpdb->get_var("
                 SELECT COUNT(DISTINCT p.ID)
                 FROM {$this->wpdb->posts} p
@@ -428,8 +450,8 @@ class WPML_To_Polylang_Migration_Verifier {
                 JOIN {$this->wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
                 JOIN {$this->wpdb->terms} t ON t.term_id = tt.term_id
                 JOIN {$this->icl_table} wpml ON wpml.element_id = p.ID
-                    AND wpml.element_type LIKE 'post_%'
-                WHERE p.post_type IN ('post', 'page', 'product', 'docs')
+                    AND wpml.element_type IN ($post_element_types_sql)
+                WHERE p.post_type IN ($post_types_sql)
                 AND p.post_status IN ('publish', 'draft', 'private')
                 AND tt.taxonomy = 'language'
                 AND wpml.language_code IS NOT NULL
@@ -440,8 +462,7 @@ class WPML_To_Polylang_Migration_Verifier {
                 )
             ");
 
-            // Wrong language = posts with language - posts with correct language
-            $posts_wrong_language = max(0, $verification['posts_with_language'] - intval($posts_correct_language));
+            $posts_wrong_language = max(0, intval($posts_with_wpml_language) - intval($posts_correct_language));
             $verification['posts_wrong_language'] = $posts_wrong_language;
 
             if ($verification['posts_wrong_language'] > 0) {
@@ -548,13 +569,25 @@ class WPML_To_Polylang_Migration_Verifier {
             }
             
             // Check terms with/without language (using term_language taxonomy)
+            $taxonomies_to_check = array_diff(
+                get_taxonomies(['public' => true], 'names'),
+                ['language', 'term_language', 'post_translations', 'term_translations']
+            );
+            if (empty($taxonomies_to_check)) {
+                $taxonomies_to_check = ['category'];
+            }
+            $taxonomies_sql = "'" . implode("','", array_map('esc_sql', $taxonomies_to_check)) . "'";
+            $term_element_types_sql = "'" . implode("','", array_map(function($tax){
+                return esc_sql('tax_' . $tax);
+            }, $taxonomies_to_check)) . "'";
+
             $terms_with_language = $this->wpdb->get_var("
                 SELECT COUNT(DISTINCT t.term_id)
                 FROM {$this->wpdb->terms} t
                 JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
                 JOIN {$this->wpdb->term_relationships} tr ON t.term_id = tr.object_id
                 JOIN {$this->wpdb->term_taxonomy} tt2 ON tr.term_taxonomy_id = tt2.term_taxonomy_id
-                WHERE tt.taxonomy IN ('category', 'post_tag', 'product_cat', 'product_tag', 'doc_category')
+                WHERE tt.taxonomy IN ($taxonomies_sql)
                 AND tt2.taxonomy = 'term_language'
             ");
             $verification['terms_with_language'] = intval($terms_with_language);
@@ -563,7 +596,7 @@ class WPML_To_Polylang_Migration_Verifier {
                 SELECT COUNT(DISTINCT t.term_id)
                 FROM {$this->wpdb->terms} t
                 JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
-                WHERE tt.taxonomy IN ('category', 'post_tag', 'product_cat', 'product_tag', 'doc_category')
+                WHERE tt.taxonomy IN ($taxonomies_sql)
             ");
             
             $verification['terms_without_language'] = intval($total_terms) - $verification['terms_with_language'];
@@ -573,8 +606,19 @@ class WPML_To_Polylang_Migration_Verifier {
                 $verification['issues'][] = "Found {$verification['terms_without_language']} terms without language assignment";
             }
 
-            // Check for terms with WRONG language (mismatch between WPML and Polylang)
-            // First count terms with correct matching languages
+            $terms_with_wpml_language = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$this->wpdb->terms} t
+                JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                JOIN {$this->wpdb->term_relationships} tr ON t.term_id = tr.object_id
+                JOIN {$this->wpdb->term_taxonomy} tl ON tr.term_taxonomy_id = tl.term_taxonomy_id
+                JOIN {$this->icl_table} wpml ON wpml.element_id = tt.term_taxonomy_id
+                    AND wpml.element_type IN ($term_element_types_sql)
+                WHERE tt.taxonomy IN ($taxonomies_sql)
+                AND tl.taxonomy = 'term_language'
+                AND wpml.language_code IS NOT NULL
+            ");
+
             $terms_correct_language = $this->wpdb->get_var("
                 SELECT COUNT(DISTINCT t.term_id)
                 FROM {$this->wpdb->terms} t
@@ -583,8 +627,8 @@ class WPML_To_Polylang_Migration_Verifier {
                 JOIN {$this->wpdb->term_taxonomy} tl ON tr.term_taxonomy_id = tl.term_taxonomy_id
                 JOIN {$this->wpdb->terms} lang ON lang.term_id = tl.term_id
                 JOIN {$this->icl_table} wpml ON wpml.element_id = tt.term_taxonomy_id
-                    AND wpml.element_type LIKE 'tax_%'
-                WHERE tt.taxonomy IN ('category', 'post_tag', 'product_cat', 'product_tag', 'doc_category')
+                    AND wpml.element_type IN ($term_element_types_sql)
+                WHERE tt.taxonomy IN ($taxonomies_sql)
                 AND tl.taxonomy = 'term_language'
                 AND wpml.language_code IS NOT NULL
                 AND (
@@ -594,8 +638,7 @@ class WPML_To_Polylang_Migration_Verifier {
                 )
             ");
 
-            // Wrong language = terms with language - terms with correct language
-            $terms_wrong_language = max(0, $verification['terms_with_language'] - intval($terms_correct_language));
+            $terms_wrong_language = max(0, intval($terms_with_wpml_language) - intval($terms_correct_language));
             $verification['terms_wrong_language'] = $terms_wrong_language;
 
             if ($verification['terms_wrong_language'] > 0) {
