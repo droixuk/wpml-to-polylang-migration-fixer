@@ -321,14 +321,19 @@ jQuery(document).ready(function($) {
         showResumeDialog: function(processId, savedState) {
             var self = this;
 
+            self.debugLog('Found saved state for process: ' + processId, 'info');
+            self.debugLog('Saved state details: ' + JSON.stringify(savedState), 'info');
+
             var message = 'Found interrupted process: ' + processId + '\n';
             message += 'Progress: ' + (savedState.offset || 0) + ' of ' + (savedState.total || 'unknown') + '\n';
             message += 'Items fixed: ' + (savedState.fixed || 0) + '\n\n';
             message += 'Would you like to resume from where it stopped?';
 
             if (confirm(message)) {
+                self.debugLog('User chose to resume process: ' + processId, 'info');
                 self.resumeProcess(processId, savedState);
             } else {
+                self.debugLog('User chose to cancel resume for: ' + processId, 'info');
                 self.clearProcessState(processId);
             }
         },
@@ -339,26 +344,61 @@ jQuery(document).ready(function($) {
         resumeProcess: function(processId, savedState) {
             var self = this;
 
+            // Set the state to running
+            savedState.running = true;
+            savedState.preview = false;
             self.processingStates[processId] = savedState;
+
             self.debugLog('Resuming process ' + processId + ' from offset ' + (savedState.offset || 0));
 
-            // Restore UI state
+            // Initialize and show progress controller
             var controller = self.getProgressController(processId);
-            if (controller) {
-                self.updateProcessUI(processId, 'processing', {
-                    processed: savedState.offset || 0,
-                    total: savedState.total || 0,
-                    fixed: savedState.fixed || 0,
-                    message: 'Resuming process...'
-                });
+            if (!controller) {
+                controller = self.registerProgressType(processId);
             }
 
-            // Continue processing
-            if (savedState.action) {
-                self.processBatch(processId, savedState.action, savedState.offset || 0, savedState.additionalData || {});
-            } else {
-                self.processBatch(processId, savedState.offset || 0, savedState.batchSize || 100);
+            if (controller) {
+                // Show the progress wrapper
+                if (controller.wrapper && controller.wrapper.length) {
+                    controller.wrapper.stop(true, true).show();
+                }
+
+                // Update progress display
+                var progress = savedState.offset || 0;
+                var total = savedState.total || 0;
+                var percent = total > 0 ? Math.min(100, (progress / total) * 100) : 0;
+
+                if (controller.fill && controller.fill.length) {
+                    controller.fill.css('width', percent + '%');
+                }
+
+                if (controller.text && controller.text.length) {
+                    controller.text.text(self.formatProgressLabel(progress, total, savedState.fixed || 0, percent));
+                }
+
+                self.setProgressCounts(controller, progress, total, savedState.fixed || 0, {
+                    total: savedState.issuesTotal || 0,
+                    remaining: savedState.issuesRemaining || 0
+                });
+
+                if (controller.status && controller.status.length) {
+                    controller.status.html('<div class="status-message status-info">Resuming from item ' + progress + '...</div>');
+                }
             }
+
+            // Continue processing after a short delay to ensure UI is ready
+            setTimeout(function() {
+                // Check if this is a comprehensive process (has action starting with wmf_)
+                if (savedState.action && savedState.action.indexOf('wmf_') === 0) {
+                    self.debugLog('Resuming comprehensive process with action: ' + savedState.action);
+                    // For comprehensive processes
+                    self.processBatch(processId, savedState.action, savedState.offset || 0, savedState.additionalData || {});
+                } else {
+                    self.debugLog('Resuming legacy process: ' + processId);
+                    // For legacy processes (posts, taxonomies, etc.)
+                    self.processBatch(processId, savedState.offset || 0, savedState.batchSize || 100);
+                }
+            }, 500);
         },
         
         /**
