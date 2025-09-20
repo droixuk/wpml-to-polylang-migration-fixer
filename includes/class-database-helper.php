@@ -1128,7 +1128,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                         JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
                         JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
                         JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
-                        LEFT JOIN {$this->icl_table} wpml ON wpml.element_id = p.ID
+                        JOIN {$this->icl_table} wpml ON wpml.element_id = p.ID
                             AND wpml.element_type = %s
                         WHERE p.post_type = %s
                         AND p.post_status IN ('publish','draft','private')
@@ -1136,6 +1136,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                         AND wpml.language_code IS NOT NULL
                         AND t.slug != wpml.language_code
                         AND t.slug != REPLACE(wpml.language_code, '_', '-')
+                        AND wpml.language_code != REPLACE(t.slug, '-', '_')
                     ", 'post_' . $type_key, $type_key));
                 }
 
@@ -1219,13 +1220,14 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                         JOIN {$wpdb->term_relationships} tr ON tr.object_id = tt.term_id
                         JOIN {$wpdb->term_taxonomy} tl ON tl.term_taxonomy_id = tr.term_taxonomy_id
                         JOIN {$wpdb->terms} lang ON lang.term_id = tl.term_id
-                        LEFT JOIN {$this->icl_table} wpml ON wpml.element_id = tt.term_taxonomy_id
+                        JOIN {$this->icl_table} wpml ON wpml.element_id = tt.term_taxonomy_id
                             AND wpml.element_type = %s
                         WHERE tt.taxonomy = %s
                         AND tl.taxonomy = 'term_language'
                         AND wpml.language_code IS NOT NULL
                         AND lang.slug != wpml.language_code
                         AND lang.slug != REPLACE(wpml.language_code, '_', '-')
+                        AND wpml.language_code != REPLACE(lang.slug, '-', '_')
                     ", 'tax_' . $tax_key, $tax_key));
                 }
 
