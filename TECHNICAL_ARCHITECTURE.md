@@ -113,7 +113,6 @@ class WPML_Fixer_Ajax_Handler {
     // Process routers
     public function handle_process() // Main dispatcher
     public function handle_ensure_buckets()
-    public function handle_normalize_languages()
     public function handle_fix_all_posts()
     public function handle_fix_all_terms()
     public function handle_fix_betterdocs()

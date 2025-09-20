@@ -306,7 +306,7 @@ class WPML_Fixer_Admin_Handler {
             'wpml-fixer-admin',
             WPML_TO_POLYLANG_FIXER_PLUGIN_URL . 'assets/js/admin.js',
             ['jquery'],
-            '1.0.5',
+            '1.0.6',
             true
         );
         

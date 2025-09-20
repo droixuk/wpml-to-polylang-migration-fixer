@@ -63,17 +63,6 @@ SELECT term_id, 'term_language'
 FROM terms WHERE taxonomy='language'
 ```
 
-#### 2.2 Normalize Language Codes
-```
-Click: "Normalize All Language Codes"
-```
-Fixes corrupted codes and maps variants.
-
-**What it does:**
-- Removes `pll_` prefixes
-- Converts underscores to hyphens (en_US → en-us)
-- Maps variants (en-au → en-gb)
-
 ### Phase 3: Content Language Assignment
 
 #### 3.1 Fix Posts and Pages
@@ -134,33 +123,18 @@ Click: "Fix Product Attributes (pa_*)"
 - All `pa_*` taxonomies (product attributes)
 - Attribute terms language assignment
 
-### Phase 5: Translation Groups
+### Phase 5: Final Verification
 
-#### 5.1 Fix Translation Relationships
-```
-Click: "Fix Translation Groups"
-```
-
-**Process:**
-1. Reads WPML translation groups (`trid`)
-2. Creates Polylang translation groups
-3. Links translated content together
-
-⚠️ **Run this AFTER all language assignments are fixed**
-
-### Phase 6: Final Verification
-
-#### 6.1 Run Final Verification
+#### 5.1 Run Final Verification
 ```
 Click: "🔍 Comprehensive Verification"
 ```
 
-#### 6.2 Check Results
+#### 5.2 Check Results
 All counts should show:
 - ✅ 0 posts without language
 - ✅ 0 terms without language
 - ✅ 0 BetterDocs issues
-- ✅ Valid translation groups
 
 ## Troubleshooting Specific Issues
 
@@ -205,8 +179,8 @@ WHERE tt.taxonomy='betterdocs_faq_category';
 **Problem:** Content with en-ie, en-au not mapping to configured languages
 
 **Fix Process:**
-1. Run "Normalize All Language Codes" first
-2. Then run content fixes
+1. Update variant mappings if needed (see filter below)
+2. Rerun the comprehensive post and term fixers
 
 **Custom Mapping:**
 ```php

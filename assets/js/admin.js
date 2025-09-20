@@ -86,19 +86,8 @@ jQuery(document).ready(function($) {
             self.toggleDebugConsole();
             self.cacheProgressControllers();
 
-            // Restore migration guide state
-            if (typeof(Storage) !== "undefined") {
-                var guideVisible = localStorage.getItem('wpml_fixer_guide_visible');
-                // Default to visible if not set
-                if (guideVisible === null || guideVisible === 'true') {
-                    $('#guide-content').show();
-                    $('.guide-toggle').attr('aria-expanded', 'true');
-                    $('.guide-toggle .dashicons').removeClass('dashicons-arrow-down-alt2').addClass('dashicons-arrow-up-alt2');
-                }
-
-                // Check for interrupted processes
-                self.checkForInterruptedProcesses();
-            }
+            // Resume any recently interrupted processes automatically
+            self.checkForInterruptedProcesses();
 
             // Bind debug toggle
             $('#debug-toggle').on('change', function() {
@@ -140,6 +129,37 @@ jQuery(document).ready(function($) {
             if ($('#wmf-status-root').length) {
                 self.renderStatus();
             }
+
+            // Cache original labels for dynamic buttons
+            var $verifyButton = $('#btn-comprehensive-verify');
+            if ($verifyButton.length && !$verifyButton.data('original-text')) {
+                $verifyButton.data('original-text', $.trim($verifyButton.text()));
+            }
+
+            // Delegate WPML fixer action buttons
+            $(document).on('click', '[data-wmf-action]', function(event) {
+                event.preventDefault();
+                var $target = $(this);
+                var actionName = $target.data('wmf-action');
+                if (!actionName) {
+                    return;
+                }
+
+                if (typeof self[actionName] === 'function') {
+                    self[actionName]($target);
+                } else if (self.debugEnabled) {
+                    self.debugLog('No handler registered for action: ' + actionName, 'warning');
+                }
+            });
+
+            // Delegate legacy batch processes
+            $(document).on('click', '[data-wmf-process]', function(event) {
+                event.preventDefault();
+                var processType = $(this).data('wmf-process');
+                if (processType) {
+                    self.startProcess(processType);
+                }
+            });
 
             self.debugLog('WPML Migration Fixer initialized with enhanced progress display');
         },
@@ -216,6 +236,10 @@ jQuery(document).ready(function($) {
             var $status = elements.status ? $(elements.status) : $('[data-progress-status="' + type + '"]');
             if (!$status.length) {
                 $status = $('#status-' + type);
+            }
+            if (!$status.length) {
+                // Also look for status within the wrapper
+                $status = $wrapper.find('[data-progress-role="status"]');
             }
             $status = $status.first();
 
@@ -1277,44 +1301,6 @@ jQuery(document).ready(function($) {
         },
         
         /**
-         * Toggle accordion
-         */
-        toggleAccordion: function(id) {
-            $("#" + id).toggleClass("active");
-        },
-
-        /**
-         * Toggle migration guide visibility
-         */
-        toggleGuide: function() {
-            var $guide = $('#migration-guide');
-            var $content = $('#guide-content');
-            var $toggle = $guide.find('.guide-toggle');
-            var $icon = $toggle.find('.dashicons');
-            var isVisible = $content.is(':visible');
-
-            if (isVisible) {
-                // Hide the guide
-                $content.slideUp(300);
-                $toggle.attr('aria-expanded', 'false');
-                $icon.removeClass('dashicons-arrow-up-alt2').addClass('dashicons-arrow-down-alt2');
-                // Save state
-                if (typeof(Storage) !== "undefined") {
-                    localStorage.setItem('wpml_fixer_guide_visible', 'false');
-                }
-            } else {
-                // Show the guide
-                $content.slideDown(300);
-                $toggle.attr('aria-expanded', 'true');
-                $icon.removeClass('dashicons-arrow-down-alt2').addClass('dashicons-arrow-up-alt2');
-                // Save state
-                if (typeof(Storage) !== "undefined") {
-                    localStorage.setItem('wpml_fixer_guide_visible', 'true');
-                }
-            }
-        },
-
-        /**
          * Ensure term_language buckets exist
          */
         ensureBuckets: function() {
@@ -1364,14 +1350,6 @@ jQuery(document).ready(function($) {
                 .always(function() {
                     $button.prop("disabled", false);
                 });
-        },
-
-        /**
-         * Normalize all language codes
-         */
-        normalizeLanguages: function() {
-            var self = this;
-            self.startBatchProcess('normalize', 'wmf_normalize_languages');
         },
 
         /**
@@ -1846,11 +1824,7 @@ jQuery(document).ready(function($) {
                         progressText.text(initialText);
                     }
 
-                    if (type === 'translations') {
-                        if (statusDiv && statusDiv.length) {
-                            statusDiv.html('<div class="status-message status-info">Starting 3-phase repair: Corrupted → Posts → Terms</div>');
-                        }
-                    } else if (statusDiv && statusDiv.length) {
+                    if (statusDiv && statusDiv.length) {
                         statusDiv.html('<div class="status-message status-info">Scanning for items to process...</div>');
                     }
                     break;
@@ -1901,17 +1875,6 @@ jQuery(document).ready(function($) {
                     // Enhanced status message with clear counts
                     var statusMessage = data.message || 'Processing...';
 
-                    // Special handling for translation groups phases
-                    if (type === 'translations' && data.message) {
-                        if (data.message.includes('corrupted')) {
-                            statusMessage = 'Phase 1 - Corrupted Groups: ' + statusMessage;
-                        } else if (data.message.includes('post groups')) {
-                            statusMessage = 'Phase 2 - Post Groups: ' + statusMessage;
-                        } else if (data.message.includes('term groups')) {
-                            statusMessage = 'Phase 3 - Term Groups: ' + statusMessage;
-                        }
-                    }
-                    
                     if (statusDiv && statusDiv.length) {
                         statusDiv.html('<div class="status-message status-info">' + statusMessage + '</div>');
                     }

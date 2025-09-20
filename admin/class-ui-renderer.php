@@ -130,13 +130,13 @@ class WPML_Fixer_UI_Renderer {
                 
                 <!-- Enhanced Verification Section -->
                 <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button id="btn-comprehensive-verify" class="wpml-btn wpml-btn-large" onclick="wpmlFixerAjax.runComprehensiveVerification()">
+                    <button id="btn-comprehensive-verify" class="wpml-btn wpml-btn-large" data-wmf-action="runComprehensiveVerification">
                         <?php _e('🔍 Comprehensive Verification', 'wpml-migration-fixer'); ?>
                     </button>
-                    <button id="btn-ensure-buckets" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.ensureBuckets()">
+                    <button id="btn-ensure-buckets" class="wpml-btn wpml-btn-secondary" data-wmf-action="ensureBuckets">
                         <?php _e('Ensure Language Buckets', 'wpml-migration-fixer'); ?>
                     </button>
-                    <button id="btn-test-connection" class="wpml-btn wpml-btn-secondary" onclick="wpmlFixerAjax.testConnection()">
+                    <button id="btn-test-connection" class="wpml-btn wpml-btn-secondary" data-wmf-action="testConnection">
                         <?php _e('Test Connection', 'wpml-migration-fixer'); ?>
                     </button>
                 </div>
@@ -149,11 +149,10 @@ class WPML_Fixer_UI_Renderer {
                 <div id="verify-results" style="margin-top: 15px;"></div>
             </div>
             
-            <!-- Main Fix Actions Accordion -->
-            <div class="accordion" id="fixes-accordion">
-                <div class="accordion-header" onclick="wpmlFixerAjax.toggleAccordion('fixes-accordion')">
-                    <h3>🛠️ <?php _e('Main Fix Actions', 'wpml-migration-fixer'); ?></h3>
-                    <span class="accordion-arrow">▼</span>
+            <!-- Fix Actions (Always Open) -->
+            <div class="accordion accordion--static active always-open" id="fixes-accordion">
+                <div class="accordion-header" style="cursor: default; pointer-events: none;">
+                    <h3>🛠️ <?php _e('Fix Actions', 'wpml-migration-fixer'); ?></h3>
                 </div>
                 <div class="accordion-content">
                     <p style="color: #666; margin-bottom: 20px;">
@@ -161,34 +160,16 @@ class WPML_Fixer_UI_Renderer {
                     </p>
                     
 
-                    <!-- Normalize Language Codes -->
-                    <div class="fix-section">
-                        <h3>🔄 <?php _e('Normalize Language Codes', 'wpml-migration-fixer'); ?></h3>
-                        <p class="fix-description">
-                            <?php _e('Canonicalize language codes and merge variants (e.g., en-au → en-gb)', 'wpml-migration-fixer'); ?>
-                        </p>
-                        <button id="btn-normalize" class="wpml-btn" data-progress-trigger="normalize" onclick="wpmlFixerAjax.normalizeLanguages()">
-                            <?php _e('Normalize All Language Codes', 'wpml-migration-fixer'); ?>
-                        </button>
-                        <div id="progress-normalize" class="progress-wrapper" data-progress-for="normalize">
-                            <div class="progress-bar" data-progress-role="bar">
-                                <div id="progress-bar-normalize" class="progress-fill" data-progress-role="fill"></div>
-                                <div id="progress-text-normalize" class="progress-text" data-progress-role="text">0%</div>
-                            </div>
-                            <?php $this->render_progress_meta(); ?>
-                        </div>
-                    </div>
-
                     <!-- Posts & Pages -->
                     <div class="fix-section">
                         <h3>📝 <?php _e('Posts & Pages', 'wpml-migration-fixer'); ?></h3>
                         <p class="fix-description">
                             <?php _e('Fix language assignments for all posts, pages, and custom post types using WPML data', 'wpml-migration-fixer'); ?>
                         </p>
-                        <button id="btn-posts" class="wpml-btn" data-progress-trigger="posts" onclick="wpmlFixerAjax.startProcess('posts')">
+                        <button id="btn-posts" class="wpml-btn" data-progress-trigger="posts" data-wmf-process="posts">
                             <?php _e('Fix Posts & Pages (Legacy)', 'wpml-migration-fixer'); ?>
                         </button>
-                        <button id="btn-fix-all-posts" class="wpml-btn wpml-btn-primary" data-progress-trigger="all-posts" onclick="wpmlFixerAjax.fixAllPosts()">
+                        <button id="btn-fix-all-posts" class="wpml-btn wpml-btn-primary" data-progress-trigger="all-posts" data-wmf-action="fixAllPosts">
                             <?php _e('Fix All Posts (Comprehensive)', 'wpml-migration-fixer'); ?>
                         </button>
                         <div id="progress-posts" class="progress-wrapper" data-progress-for="posts">
@@ -213,10 +194,10 @@ class WPML_Fixer_UI_Renderer {
                         <p class="fix-description">
                             <?php _e('Fix all taxonomies including categories, tags, custom taxonomies, and WooCommerce attributes', 'wpml-migration-fixer'); ?>
                         </p>
-                        <button id="btn-taxonomies" class="wpml-btn" data-progress-trigger="taxonomies" onclick="wpmlFixerAjax.startProcess('taxonomies')">
+                        <button id="btn-taxonomies" class="wpml-btn" data-progress-trigger="taxonomies" data-wmf-process="taxonomies">
                             <?php _e('Fix Taxonomies (Legacy)', 'wpml-migration-fixer'); ?>
                         </button>
-                        <button id="btn-fix-all-terms" class="wpml-btn wpml-btn-primary" data-progress-trigger="all-terms" onclick="wpmlFixerAjax.fixAllTerms()">
+                        <button id="btn-fix-all-terms" class="wpml-btn wpml-btn-primary" data-progress-trigger="all-terms" data-wmf-action="fixAllTerms">
                             <?php _e('Fix All Terms (Comprehensive)', 'wpml-migration-fixer'); ?>
                         </button>
                         <div id="progress-taxonomies" class="progress-wrapper" data-progress-for="taxonomies">
@@ -242,10 +223,10 @@ class WPML_Fixer_UI_Renderer {
                         <p class="fix-description">
                             <?php _e('Fix product content, categories, shipping classes, and variations', 'wpml-migration-fixer'); ?>
                         </p>
-                        <button id="btn-woocommerce" class="wpml-btn" data-progress-trigger="woocommerce" onclick="wpmlFixerAjax.startProcess('woocommerce')">
+                        <button id="btn-woocommerce" class="wpml-btn" data-progress-trigger="woocommerce" data-wmf-process="woocommerce">
                             <?php _e('Fix WooCommerce Products', 'wpml-migration-fixer'); ?>
                         </button>
-                        <button id="btn-woo-attributes" class="wpml-btn wpml-btn-primary" data-progress-trigger="woo-attributes" onclick="wpmlFixerAjax.fixWooAttributes()">
+                        <button id="btn-woo-attributes" class="wpml-btn wpml-btn-primary" data-progress-trigger="woo-attributes" data-wmf-action="fixWooAttributes">
                             <?php _e('Fix Product Attributes (pa_*)', 'wpml-migration-fixer'); ?>
                         </button>
                         <div id="progress-woocommerce" class="progress-wrapper" data-progress-for="woocommerce">
@@ -272,10 +253,10 @@ class WPML_Fixer_UI_Renderer {
                         <p class="fix-description">
                             <?php _e('Fix BetterDocs documentation, FAQs, and their categories', 'wpml-migration-fixer'); ?>
                         </p>
-                        <button id="btn-betterdocs" class="wpml-btn" data-progress-trigger="betterdocs" onclick="wpmlFixerAjax.startProcess('betterdocs')">
+                        <button id="btn-betterdocs" class="wpml-btn" data-progress-trigger="betterdocs" data-wmf-process="betterdocs">
                             <?php _e('Fix BetterDocs (Legacy)', 'wpml-migration-fixer'); ?>
                         </button>
-                        <button id="btn-fix-betterdocs" class="wpml-btn wpml-btn-primary" data-progress-trigger="fix-betterdocs" onclick="wpmlFixerAjax.fixBetterDocs()">
+                        <button id="btn-fix-betterdocs" class="wpml-btn wpml-btn-primary" data-progress-trigger="fix-betterdocs" data-wmf-action="fixBetterDocs">
                             <?php _e('Fix BetterDocs (Comprehensive)', 'wpml-migration-fixer'); ?>
                         </button>
                         <div id="progress-betterdocs" class="progress-wrapper" data-progress-for="betterdocs">
@@ -295,40 +276,16 @@ class WPML_Fixer_UI_Renderer {
                     </div>
                     <?php endif; ?>
 
-                    <!-- Translation Groups -->
-                    <div class="fix-section">
-                        <h3>🔗 <?php _e('Translation Groups', 'wpml-migration-fixer'); ?></h3>
-                        <p class="fix-description">
-                            <?php _e('Link translated content together', 'wpml-migration-fixer'); ?>
-                        </p>
-                        <button id="btn-translations" class="wpml-btn" data-progress-trigger="translations" onclick="wpmlFixerAjax.startProcess('translations')">
-                            <?php _e('Fix Translation Groups', 'wpml-migration-fixer'); ?>
-                        </button>
-                        <div id="progress-translations" class="progress-wrapper" data-progress-for="translations">
-                            <div class="progress-bar" data-progress-role="bar">
-                                <div id="progress-bar-translations" class="progress-fill" data-progress-role="fill"></div>
-                                <div id="progress-text-translations" class="progress-text" data-progress-role="text">0%</div>
-                            </div>
-                            <?php $this->render_progress_meta(); ?>
-                        </div>
-                    </div>
                 </div>
             </div>
 
-            <?php
-            $guide_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/migration-guide.php';
-            if (file_exists($guide_file)) {
-                include $guide_file;
-            }
-            ?>
-            
             <!-- Debug Console (Hidden by default) -->
             <div id="debug-console" class="wpml-card" style="display: none; margin-top: 20px; background: #f5f5f5; border-left: 4px solid #ff9800;">
                 <h3>🐛 <?php _e('Debug Console', 'wpml-migration-fixer'); ?></h3>
                 <div id="debug-output" style="background: #000; color: #0f0; font-family: monospace; font-size: 12px; padding: 15px; border-radius: 5px; height: 200px; overflow-y: auto;">
                     <div><?php _e('Debug console initialized...', 'wpml-migration-fixer'); ?></div>
                 </div>
-                <button onclick="wpmlFixerAjax.clearDebug()" class="wpml-btn wpml-btn-secondary" style="margin-top: 10px;">
+                <button class="wpml-btn wpml-btn-secondary" data-wmf-action="clearDebug" style="margin-top: 10px;">
                     <?php _e('Clear Debug Log', 'wpml-migration-fixer'); ?>
                 </button>
             </div>
@@ -377,6 +334,7 @@ class WPML_Fixer_UI_Renderer {
                 <span class="progress-meta__value" data-progress-role="issues-remaining">0</span>
             </div>
         </div>
+        <div class="progress-status" data-progress-role="status"></div>
         <?php
     }
 }

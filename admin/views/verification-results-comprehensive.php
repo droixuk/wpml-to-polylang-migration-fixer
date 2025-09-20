@@ -95,7 +95,7 @@ if (!defined('ABSPATH')) exit;
         <?php endif; ?>
 
         <?php if ($results['translation_groups']['invalid_groups'] > 0 || $results['posts']['orphaned_wpml_groups'] > 0 || $results['terms']['orphaned_wpml_term_groups'] > 0): ?>
-        <li><strong>🔗 Priority 2:</strong> Fix translation groups (<?php echo $results['translation_groups']['invalid_groups']; ?> corrupted, <?php echo $results['posts']['orphaned_wpml_groups']; ?> missing post groups, <?php echo $results['terms']['orphaned_wpml_term_groups']; ?> missing term groups) using "Fix Translation Groups"</li>
+        <li><strong>🔗 Priority 2:</strong> Review translation groups (<?php echo $results['translation_groups']['invalid_groups']; ?> corrupted, <?php echo $results['posts']['orphaned_wpml_groups']; ?> missing post groups, <?php echo $results['terms']['orphaned_wpml_term_groups']; ?> missing term groups) in Polylang’s translation set editor</li>
         <?php endif; ?>
 
         <?php if ($results['posts']['posts_without_language'] > 0): ?>

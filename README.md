@@ -82,14 +82,13 @@ wpml-to-polylang-migration-fixer/
 
 ### Step 2: Prepare the Environment
 1. Click **"Ensure Language Buckets"** to make sure Polylang has the required term containers.
-2. Run **"Normalize All Language Codes"** whenever you suspect corrupted `pll_` slugs or regional variants.
+2. (Optional) Adjust language variant mappings via the `wpml_to_polylang_fixer_variant_map` filter if you need custom canonicalization.
 
 ### Step 3: Apply Fixes (Recommended Order)
 1. **Fix All Posts (Comprehensive)** – covers every public post type, including BetterDocs and WooCommerce content.
 2. **Fix All Terms (Comprehensive)** – repairs languages for categories, tags, custom taxonomies, and WooCommerce terms.
 3. **Fix BetterDocs (Comprehensive)** – reruns targeted passes for docs, FAQs, and BetterDocs taxonomies.
 4. **Fix Product Attributes (pa_*)** – run when WooCommerce attributes need dedicated attention.
-5. **Fix Translation Groups** – rebuilds post and term groupings once language assignments look healthy.
 
 ### Step 4: Verify
 1. Click **"Comprehensive Verification"** to generate a post-migration report.
@@ -265,7 +264,6 @@ get_comprehensive_verification()    // Full diagnostic suite
 
 ##### 3. New AJAX Handlers (`class-ajax-handler.php`)
 - `wmf_ensure_buckets` - Creates missing term_language entries
-- `wmf_normalize_languages` - Batch language canonicalization
 - `wmf_fix_all_posts` - Enhanced post processing
 - `wmf_fix_all_terms` - Enhanced term processing
 - `wmf_fix_betterdocs` - BetterDocs-specific
@@ -274,7 +272,6 @@ get_comprehensive_verification()    // Full diagnostic suite
 ##### 4. UI Enhancements (`class-ui-renderer.php`)
 New buttons added:
 - "Ensure Language Buckets" - Pre-flight safeguard
-- "Normalize All Language Codes" - Fix variants/corruption
 - "Fix All Posts (Comprehensive)" - New enhanced fixer
 - "Fix All Terms (Comprehensive)" - New enhanced fixer
 - "Fix BetterDocs (Comprehensive)" - Dedicated handler
@@ -315,13 +312,11 @@ WHERE element_id={term_taxonomy_id} AND element_type='tax_{taxonomy}'
 
 #### Recommended Workflow
 
-1. **Normalize Language Codes** - Fix corrupted/variant codes first
-2. **Ensure Language Buckets** - Create missing Polylang structures
-3. **Fix All Posts** - Assign languages from WPML data
-4. **Fix All Terms** - Fix taxonomies including pa_*
-5. **Fix BetterDocs** (if active) - Handle docs/FAQs specifically
-6. **Fix Translation Groups** - Rebuild relationships
-7. **Run Verification** - Confirm all fixed
+1. **Ensure Language Buckets** - Create missing Polylang structures
+2. **Fix All Posts** - Assign languages from WPML data
+3. **Fix All Terms** - Fix taxonomies including pa_*
+4. **Fix BetterDocs** (if active) - Handle docs/FAQs specifically
+5. **Run Verification** - Confirm all fixed
 
 ## Changelog
 

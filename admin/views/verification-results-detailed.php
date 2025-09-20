@@ -506,7 +506,7 @@ function format_stat($with, $total, $show_missing = true) {
             <ul style="margin: 10px 0; padding-left: 20px;">
                 <li><?php _e('Use "Fix All Posts (Comprehensive)" for post language issues', 'wpml-to-polylang-migration-fixer'); ?></li>
                 <li><?php _e('Use "Fix All Terms (Comprehensive)" for taxonomy issues', 'wpml-to-polylang-migration-fixer'); ?></li>
-                <li><?php _e('Use "Fix Translation Groups" for relationship issues', 'wpml-to-polylang-migration-fixer'); ?></li>
+                <li><?php _e('Review Polylang translation sets for relationship issues flagged above', 'wpml-to-polylang-migration-fixer'); ?></li>
                 <?php if (!empty($results['content_groups']['betterdocs'])): ?>
                 <li><?php _e('Use "Fix BetterDocs (Comprehensive)" for documentation issues', 'wpml-to-polylang-migration-fixer'); ?></li>
                 <?php endif; ?>

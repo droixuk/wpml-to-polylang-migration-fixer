@@ -502,6 +502,20 @@ body.wmf-modal-open {
     margin-bottom: 0;
 }
 
+/* Always open accordion - no toggle functionality */
+.accordion.always-open .accordion-header {
+    cursor: default !important;
+    pointer-events: none !important;
+}
+
+.accordion.always-open .accordion-arrow {
+    display: none !important;
+}
+
+.accordion.always-open .accordion-content {
+    display: block !important;
+}
+
 /* Interrupted process styles */
 .progress-wrapper.interrupted-process {
     border: 2px solid #ffb900;
