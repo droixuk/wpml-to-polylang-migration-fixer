@@ -16,6 +16,7 @@ jQuery(document).ready(function($) {
         strings: {},
         page: '',
         processingStates: {}, // Track processing state for each type
+        BATCH_SIZE: 100, // Global batch size constant - matches WPML_FIXER_BATCH_SIZE in PHP
         progressControllers: {}, // Cache DOM references for reusable progress UI
         sqlModalInitialized: false,
         stateStorageKey: 'wpml_fixer_process_state',
@@ -644,7 +645,7 @@ jQuery(document).ready(function($) {
                 } else {
                     self.debugLog('Resuming legacy process: ' + processId);
                     // For legacy processes (posts, taxonomies, etc.)
-                    self.processBatch(processId, savedState.offset || 0, savedState.batchSize || 100);
+                    self.processBatch(processId, savedState.offset || 0, savedState.batchSize || self.BATCH_SIZE);
                 }
             }, 500);
         },
@@ -1252,131 +1253,6 @@ jQuery(document).ready(function($) {
         },
         
         /**
-         * Test AJAX connection
-         */
-        testConnection: function() {
-            var self = this;
-            $("#btn-test-connection").prop("disabled", true);
-            self.debugLog('Testing AJAX connection...');
-            
-            var requestData = self.createRequestData("wpml_fixer_ajax_test_connection", {
-                test_data: "Connection test - " + new Date().toISOString()
-            });
-            
-            self.debugLog('Request data keys: ' + Object.keys(requestData).join(', '));
-            
-            $.post(self.ajaxUrl, requestData)
-                .done(function(response) {
-                    self.debugLog('Response received: ' + JSON.stringify(response).substring(0, 100) + '...');
-                    
-                    if (response && response.success) {
-                        self.debugLog('✅ Connection test successful');
-                        $("#verify-results").html(
-                            '<div class="status-message status-success">' +
-                            '✅ AJAX connection working properly!<br>' +
-                            '<small>Server response: ' + (response.data.message || 'Success') + '</small>' +
-                            '</div>'
-                        );
-                    } else {
-                        var errorMsg = response && response.data ? response.data : 'Unknown error';
-                        self.debugLog('❌ Connection test failed: ' + errorMsg, 'error');
-                        $("#verify-results").html(
-                            '<div class="status-message status-error">' +
-                            '❌ Connection test failed: ' + errorMsg +
-                            '</div>'
-                        );
-                    }
-                })
-                .fail(function(xhr, status, error) {
-                    self.debugLog('❌ Connection failed: ' + error, 'error');
-                    $("#verify-results").html(
-                        '<div class="status-message status-error">' +
-                        '❌ AJAX connection failed: ' + error +
-                        '</div>'
-                    );
-                })
-                .always(function() {
-                    $("#btn-test-connection").prop("disabled", false);
-                });
-        },
-        
-        /**
-         * Ensure term_language buckets exist
-         */
-        ensureBuckets: function() {
-            var self = this;
-            var $button = $("#btn-ensure-buckets");
-            $button.prop("disabled", true);
-            self.debugLog('Ensuring term_language buckets...');
-
-            // DEBUG CODE START
-            // Find the progress area to add debug window
-            var $progressArea = $button.closest('.fix-section');
-            var $debugWindow = null;
-            // DEBUG CODE END
-
-            var requestData = self.createRequestData("wmf_ensure_buckets");
-
-            $.post(self.ajaxUrl, requestData)
-                .done(function(response) {
-                    if (response && response.success) {
-                        self.showTemporaryMessage(response.data.message, 'success');
-                        self.debugLog('✅ ' + response.data.message);
-
-                        // DEBUG CODE START
-                        // Display debug window if debug data is present
-                        if (self.debugEnabled && response.data.debug) {
-                            if (!$debugWindow) {
-                                $progressArea.append(self.buildDebugWindow());
-                                $debugWindow = $progressArea.find('[data-debug-window]');
-                            }
-                            self.updateDebugWindow($debugWindow, response.data.debug);
-                            $debugWindow.show();
-                            // Auto-expand if it was collapsed
-                            if ($debugWindow.hasClass('collapsed')) {
-                                $debugWindow.find('.debug-toggle').click();
-                            }
-                        }
-                        // DEBUG CODE END
-                    } else {
-                        self.showTemporaryMessage('Failed to ensure buckets', 'error');
-                        self.debugLog('❌ Failed to ensure buckets', 'error');
-                    }
-                })
-                .fail(function(xhr, status, error) {
-                    self.showTemporaryMessage('Request failed: ' + error, 'error');
-                    self.debugLog('❌ Request failed: ' + error, 'error');
-                })
-                .always(function() {
-                    $button.prop("disabled", false);
-                });
-        },
-
-        /**
-         * Fix all posts (comprehensive)
-         */
-        fixAllPosts: function() {
-            var self = this;
-            self.startBatchProcess('all-posts', 'wmf_fix_all_posts');
-        },
-
-        /**
-         * Fix all terms (comprehensive)
-         */
-        fixAllTerms: function() {
-            var self = this;
-            self.startBatchProcess('all-terms', 'wmf_fix_all_terms');
-        },
-
-        /**
-         * Fix BetterDocs (comprehensive)
-         */
-        fixBetterDocs: function() {
-            var self = this;
-            self.startBatchProcess('fix-betterdocs', 'wmf_fix_betterdocs');
-        },
-
-        /**
          * Fix WooCommerce attributes
          */
         fixWooAttributes: function() {
@@ -1606,7 +1482,7 @@ jQuery(document).ready(function($) {
             self.updateProcessUI(type, 'starting');
             
             // Start the batch processing
-            self.processBatch(type, 0, 100); // Start with offset 0, batch size 100
+            self.processBatch(type, 0, self.BATCH_SIZE); // Start with offset 0
         },
         
         /**
@@ -1625,7 +1501,7 @@ jQuery(document).ready(function($) {
             var isComprehensive = typeof arg2 === 'string' && arg2.indexOf('wmf_') === 0;
             var action = isComprehensive ? arg2 : 'wpml_fixer_ajax_process';
             var offset = isComprehensive ? (typeof arg3 === 'number' ? arg3 : 0) : (typeof arg2 === 'number' ? arg2 : 0);
-            var batchSize = isComprehensive ? 100 : (typeof arg3 === 'number' ? arg3 : 40);
+            var batchSize = isComprehensive ? self.BATCH_SIZE : (typeof arg3 === 'number' ? arg3 : self.BATCH_SIZE);
             var additionalData = isComprehensive ? (arg4 && typeof arg4 === 'object' ? arg4 : {}) : {};
 
             self.debugLog('Processing batch for ' + processId + ' - offset: ' + offset + ', batch: ' + batchSize + (isComprehensive ? ', action: ' + action : ''));

@@ -81,14 +81,14 @@ wpml-to-polylang-migration-fixer/
 2. Open `Tools → WPML Fixer Status` for in-depth diagnostics when you need table-level detail or SQL previews.
 
 ### Step 2: Prepare the Environment
-1. Click **"Ensure Language Buckets"** to make sure Polylang has the required term containers.
-2. (Optional) Adjust language variant mappings via the `wpml_to_polylang_fixer_variant_map` filter if you need custom canonicalization.
+1. (Optional) Adjust language variant mappings via the `wpml_to_polylang_fixer_variant_map` filter if you need custom canonicalization.
+2. Enable **Debug Mode** if you want verbose logging while fixes run.
 
 ### Step 3: Apply Fixes (Recommended Order)
-1. **Fix All Posts (Comprehensive)** – covers every public post type, including BetterDocs and WooCommerce content.
-2. **Fix All Terms (Comprehensive)** – repairs languages for categories, tags, custom taxonomies, and WooCommerce terms.
-3. **Fix BetterDocs (Comprehensive)** – reruns targeted passes for docs, FAQs, and BetterDocs taxonomies.
-4. **Fix Product Attributes (pa_*)** – run when WooCommerce attributes need dedicated attention.
+1. **Fix Posts & Pages (Legacy)** – covers every public post type, including BetterDocs and WooCommerce content.
+2. **Fix Taxonomies (Legacy)** – repairs languages for categories, tags, custom taxonomies, and WooCommerce terms.
+3. **Fix WooCommerce Product Attributes (pa_*)** – run when WooCommerce attributes need dedicated attention.
+4. **Fix BetterDocs (Legacy)** – reruns targeted passes for docs, FAQs, and BetterDocs taxonomies.
 
 ### Step 4: Verify
 1. Click **"Comprehensive Verification"** to generate a post-migration report.

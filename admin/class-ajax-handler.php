@@ -155,7 +155,7 @@ class WPML_Fixer_Ajax_Handler {
         try {
             $type = sanitize_text_field($_POST['type'] ?? '');
             $offset = intval($_POST['offset'] ?? 0);
-            $batch_size = intval($_POST['batch_size'] ?? 100);
+            $batch_size = intval($_POST['batch_size'] ?? WPML_FIXER_BATCH_SIZE);
             
             if (!$type) {
                 throw new Exception('Process type not specified');
@@ -201,7 +201,10 @@ class WPML_Fixer_Ajax_Handler {
      * Process taxonomies - Fix all terms without language assignment
      * Enhanced with robust fallbacks and cache clearing
      */
-    private function process_taxonomies($offset = 0, $batch_size = 100) {
+    private function process_taxonomies($offset = 0, $batch_size = null) {
+        if ($batch_size === null) {
+            $batch_size = WPML_FIXER_BATCH_SIZE;
+        }
         global $wpdb;
         
         $start_time = microtime(true);
@@ -376,7 +379,10 @@ class WPML_Fixer_Ajax_Handler {
     /**
      * Process posts - Fix posts without language assignment
      */
-    private function process_posts($offset = 0, $batch_size = 100) {
+    private function process_posts($offset = 0, $batch_size = null) {
+        if ($batch_size === null) {
+            $batch_size = WPML_FIXER_BATCH_SIZE;
+        }
         global $wpdb;
         
         $start_time = microtime(true);
@@ -562,7 +568,10 @@ class WPML_Fixer_Ajax_Handler {
     /**
      * Process BetterDocs - Fix docs and BetterDocs taxonomies
      */
-    private function process_betterdocs($offset = 0, $batch_size = 100) {
+    private function process_betterdocs($offset = 0, $batch_size = null) {
+        if ($batch_size === null) {
+            $batch_size = WPML_FIXER_BATCH_SIZE;
+        }
         // Check if BetterDocs is active
         if (!post_type_exists('docs')) {
             return [
@@ -806,7 +815,10 @@ class WPML_Fixer_Ajax_Handler {
     /**
      * Process WooCommerce products specifically
      */
-    private function process_woocommerce($offset, $batch_size) {
+    private function process_woocommerce($offset, $batch_size = null) {
+        if ($batch_size === null) {
+            $batch_size = WPML_FIXER_BATCH_SIZE;
+        }
         global $wpdb;
 
         // Get total products count
@@ -1114,7 +1126,7 @@ class WPML_Fixer_Ajax_Handler {
 
         try {
             $offset = intval($_POST['offset'] ?? 0);
-            $batch_size = intval($_POST['batch_size'] ?? 100);
+            $batch_size = intval($_POST['batch_size'] ?? WPML_FIXER_BATCH_SIZE);
 
             global $wpdb;
 
@@ -1242,7 +1254,7 @@ class WPML_Fixer_Ajax_Handler {
 
         try {
             $offset = intval($_POST['offset'] ?? 0);
-            $batch_size = intval($_POST['batch_size'] ?? 100);
+            $batch_size = intval($_POST['batch_size'] ?? WPML_FIXER_BATCH_SIZE);
 
             global $wpdb;
 
@@ -1589,7 +1601,7 @@ class WPML_Fixer_Ajax_Handler {
             global $wpdb;
 
             $offset = intval($_POST['offset'] ?? 0);
-            $batch_size = intval($_POST['batch_size'] ?? 100);
+            $batch_size = intval($_POST['batch_size'] ?? WPML_FIXER_BATCH_SIZE);
 
             $preview = !empty($_POST['preview']);
             $results = $this->db_helper->fix_woocommerce_attributes_batch($batch_size, $offset);

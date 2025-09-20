@@ -48,26 +48,11 @@ Look for:
 - ❌ Corrupted language codes (pll_ prefix)
 - ❌ Unmapped language variants (en-ie, en-au)
 
-### Phase 2: Pre-Flight Fixes
+### Phase 2: Content Language Assignment
 
-#### 2.1 Ensure Language Buckets
+#### 2.1 Fix Posts and Pages
 ```
-Click: "Ensure Language Buckets"
-```
-This creates missing `term_language` entries that Polylang requires.
-
-**What it does:**
-```sql
-INSERT IGNORE INTO term_taxonomy (term_id, taxonomy)
-SELECT term_id, 'term_language'
-FROM terms WHERE taxonomy='language'
-```
-
-### Phase 3: Content Language Assignment
-
-#### 3.1 Fix Posts and Pages
-```
-Click: "Fix All Posts (Comprehensive)"
+Click: "Fix Posts & Pages (Legacy)"
 ```
 
 **Process:**
@@ -82,9 +67,9 @@ Click: "Fix All Posts (Comprehensive)"
 - BetterDocs docs
 - WooCommerce products
 
-#### 3.2 Fix Taxonomies
+#### 2.2 Fix Taxonomies
 ```
-Click: "Fix All Terms (Comprehensive)"
+Click: "Fix Taxonomies (Legacy)"
 ```
 
 **Process:**
@@ -99,11 +84,11 @@ Click: "Fix All Terms (Comprehensive)"
 - WooCommerce product categories
 - BetterDocs taxonomies
 
-### Phase 4: Plugin-Specific Fixes
+### Phase 3: Plugin-Specific Fixes
 
-#### 4.1 BetterDocs (if active)
+#### 3.1 BetterDocs (if active)
 ```
-Click: "Fix BetterDocs (Comprehensive)"
+Click: "Fix BetterDocs (Legacy)"
 ```
 
 **Handles:**
@@ -114,7 +99,7 @@ Click: "Fix BetterDocs (Comprehensive)"
 - `knowledge_base` taxonomy
 - `betterdocs_faq_category` taxonomy
 
-#### 4.2 WooCommerce Attributes (if active)
+#### 3.2 WooCommerce Attributes (if active)
 ```
 Click: "Fix Product Attributes (pa_*)"
 ```
@@ -123,14 +108,14 @@ Click: "Fix Product Attributes (pa_*)"
 - All `pa_*` taxonomies (product attributes)
 - Attribute terms language assignment
 
-### Phase 5: Final Verification
+### Phase 4: Final Verification
 
-#### 5.1 Run Final Verification
+#### 4.1 Run Final Verification
 ```
 Click: "🔍 Comprehensive Verification"
 ```
 
-#### 5.2 Check Results
+#### 4.2 Check Results
 All counts should show:
 - ✅ 0 posts without language
 - ✅ 0 terms without language

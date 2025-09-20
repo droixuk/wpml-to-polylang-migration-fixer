@@ -91,7 +91,7 @@ if (!defined('ABSPATH')) exit;
         <?php endif; ?>
 
         <?php if ($results['terms']['terms_without_language'] > 0): ?>
-        <li><strong>🏷️ Priority 1:</strong> Fix <?php echo $results['terms']['terms_without_language']; ?> terms without language using "Fix All Taxonomies"</li>
+        <li><strong>🏷️ Priority 1:</strong> Fix <?php echo $results['terms']['terms_without_language']; ?> terms without language using "Fix Taxonomies (Legacy)"</li>
         <?php endif; ?>
 
         <?php if ($results['translation_groups']['invalid_groups'] > 0 || $results['posts']['orphaned_wpml_groups'] > 0 || $results['terms']['orphaned_wpml_term_groups'] > 0): ?>
@@ -99,11 +99,11 @@ if (!defined('ABSPATH')) exit;
         <?php endif; ?>
 
         <?php if ($results['posts']['posts_without_language'] > 0): ?>
-        <li><strong>📝 Priority 3:</strong> Fix <?php echo $results['posts']['posts_without_language']; ?> posts without language using "Fix Posts & Pages"</li>
+        <li><strong>📝 Priority 3:</strong> Fix <?php echo $results['posts']['posts_without_language']; ?> posts without language using "Fix Posts & Pages (Legacy)"</li>
         <?php endif; ?>
 
         <?php if ($results['betterdocs']['betterdocs_active'] && $results['betterdocs']['critical_issues'] > 0): ?>
-        <li><strong>📚 Priority 4:</strong> Fix <?php echo $results['betterdocs']['critical_issues']; ?> BetterDocs issues using "Fix BetterDocs"</li>
+        <li><strong>📚 Priority 4:</strong> Fix <?php echo $results['betterdocs']['critical_issues']; ?> BetterDocs issues using "Fix BetterDocs (Legacy)"</li>
         <?php endif; ?>
     </ul>
     

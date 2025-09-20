@@ -133,12 +133,6 @@ class WPML_Fixer_UI_Renderer {
                     <button id="btn-comprehensive-verify" class="wpml-btn wpml-btn-large" data-wmf-action="runComprehensiveVerification">
                         <?php _e('🔍 Comprehensive Verification', 'wpml-migration-fixer'); ?>
                     </button>
-                    <button id="btn-ensure-buckets" class="wpml-btn wpml-btn-secondary" data-wmf-action="ensureBuckets">
-                        <?php _e('Ensure Language Buckets', 'wpml-migration-fixer'); ?>
-                    </button>
-                    <button id="btn-test-connection" class="wpml-btn wpml-btn-secondary" data-wmf-action="testConnection">
-                        <?php _e('Test Connection', 'wpml-migration-fixer'); ?>
-                    </button>
                 </div>
                 
                 <div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; font-size: 14px;">
@@ -169,20 +163,10 @@ class WPML_Fixer_UI_Renderer {
                         <button id="btn-posts" class="wpml-btn" data-progress-trigger="posts" data-wmf-process="posts">
                             <?php _e('Fix Posts & Pages (Legacy)', 'wpml-migration-fixer'); ?>
                         </button>
-                        <button id="btn-fix-all-posts" class="wpml-btn wpml-btn-primary" data-progress-trigger="all-posts" data-wmf-action="fixAllPosts">
-                            <?php _e('Fix All Posts (Comprehensive)', 'wpml-migration-fixer'); ?>
-                        </button>
                         <div id="progress-posts" class="progress-wrapper" data-progress-for="posts">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-posts" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-posts" class="progress-text" data-progress-role="text">0%</div>
-                            </div>
-                            <?php $this->render_progress_meta(); ?>
-                        </div>
-                        <div id="progress-all-posts" class="progress-wrapper" data-progress-for="all-posts">
-                            <div class="progress-bar" data-progress-role="bar">
-                                <div id="progress-bar-all-posts" class="progress-fill" data-progress-role="fill"></div>
-                                <div id="progress-text-all-posts" class="progress-text" data-progress-role="text">0%</div>
                             </div>
                             <?php $this->render_progress_meta(); ?>
                         </div>
@@ -197,20 +181,10 @@ class WPML_Fixer_UI_Renderer {
                         <button id="btn-taxonomies" class="wpml-btn" data-progress-trigger="taxonomies" data-wmf-process="taxonomies">
                             <?php _e('Fix Taxonomies (Legacy)', 'wpml-migration-fixer'); ?>
                         </button>
-                        <button id="btn-fix-all-terms" class="wpml-btn wpml-btn-primary" data-progress-trigger="all-terms" data-wmf-action="fixAllTerms">
-                            <?php _e('Fix All Terms (Comprehensive)', 'wpml-migration-fixer'); ?>
-                        </button>
                         <div id="progress-taxonomies" class="progress-wrapper" data-progress-for="taxonomies">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-taxonomies" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-taxonomies" class="progress-text" data-progress-role="text">0%</div>
-                            </div>
-                            <?php $this->render_progress_meta(); ?>
-                        </div>
-                        <div id="progress-all-terms" class="progress-wrapper" data-progress-for="all-terms">
-                            <div class="progress-bar" data-progress-role="bar">
-                                <div id="progress-bar-all-terms" class="progress-fill" data-progress-role="fill"></div>
-                                <div id="progress-text-all-terms" class="progress-text" data-progress-role="text">0%</div>
                             </div>
                             <?php $this->render_progress_meta(); ?>
                         </div>
@@ -256,20 +230,10 @@ class WPML_Fixer_UI_Renderer {
                         <button id="btn-betterdocs" class="wpml-btn" data-progress-trigger="betterdocs" data-wmf-process="betterdocs">
                             <?php _e('Fix BetterDocs (Legacy)', 'wpml-migration-fixer'); ?>
                         </button>
-                        <button id="btn-fix-betterdocs" class="wpml-btn wpml-btn-primary" data-progress-trigger="fix-betterdocs" data-wmf-action="fixBetterDocs">
-                            <?php _e('Fix BetterDocs (Comprehensive)', 'wpml-migration-fixer'); ?>
-                        </button>
                         <div id="progress-betterdocs" class="progress-wrapper" data-progress-for="betterdocs">
                             <div class="progress-bar" data-progress-role="bar">
                                 <div id="progress-bar-betterdocs" class="progress-fill" data-progress-role="fill"></div>
                                 <div id="progress-text-betterdocs" class="progress-text" data-progress-role="text">0%</div>
-                            </div>
-                            <?php $this->render_progress_meta(); ?>
-                        </div>
-                        <div id="progress-fix-betterdocs" class="progress-wrapper" data-progress-for="fix-betterdocs">
-                            <div class="progress-bar" data-progress-role="bar">
-                                <div id="progress-bar-fix-betterdocs" class="progress-fill" data-progress-role="fill"></div>
-                                <div id="progress-text-fix-betterdocs" class="progress-text" data-progress-role="text">0%</div>
                             </div>
                             <?php $this->render_progress_meta(); ?>
                         </div>

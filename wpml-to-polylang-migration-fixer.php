@@ -30,11 +30,13 @@ define('WPML_TO_POLYLANG_FIXER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WPML_TO_POLYLANG_FIXER_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WPML_TO_POLYLANG_FIXER_PLUGIN_FILE', __FILE__);
 define('WPML_TO_POLYLANG_FIXER_DEBUG', defined('WP_DEBUG') && WP_DEBUG);
+define('WPML_TO_POLYLANG_FIXER_BATCH_SIZE', 100); // Global batch size for all processing
 
 // Use consistent naming convention
 define('WPML_FIXER_VERSION', WPML_TO_POLYLANG_FIXER_VERSION);
 define('WPML_FIXER_PLUGIN_DIR', WPML_TO_POLYLANG_FIXER_PLUGIN_DIR);
 define('WPML_FIXER_PLUGIN_URL', WPML_TO_POLYLANG_FIXER_PLUGIN_URL);
+define('WPML_FIXER_BATCH_SIZE', WPML_TO_POLYLANG_FIXER_BATCH_SIZE);
 
 /**
  * Main plugin class
@@ -214,7 +216,7 @@ class WPML_To_Polylang_Migration_Fixer {
         
         // Set default options
         add_option('wpml_to_polylang_fixer_debug_enabled', false);
-        add_option('wpml_to_polylang_fixer_batch_size', 100);
+        add_option('wpml_to_polylang_fixer_batch_size', WPML_TO_POLYLANG_FIXER_BATCH_SIZE);
         add_option('wpml_to_polylang_fixer_version', WPML_TO_POLYLANG_FIXER_VERSION);
         
         // Log activation
