@@ -9,7 +9,7 @@ jQuery(document).ready(function($) {
     
     // Set up default properties
     $.extend(window.wpmlFixerAjax, {
-        debugEnabled: true, // Temporarily enable for debugging
+        debugEnabled: false,
         ajaxUrl: '',
         nonce: '',
         nonceName: '',
@@ -107,6 +107,31 @@ jQuery(document).ready(function($) {
                 self.debugLog('Debug mode ' + (self.debugEnabled ? 'enabled' : 'disabled'));
             });
 
+            // Bind Resume/Restart/Cancel button handlers (using event delegation for dynamically created buttons)
+            $(document).on('click', '.resume-btn', function() {
+                var processId = $(this).data('process');
+                if (processId && self.interruptedStates && self.interruptedStates[processId]) {
+                    self.debugLog('User clicked Resume for process: ' + processId);
+                    self.handleResumeClick(processId);
+                }
+            });
+
+            $(document).on('click', '.restart-btn', function() {
+                var processId = $(this).data('process');
+                if (processId) {
+                    self.debugLog('User clicked Restart for process: ' + processId);
+                    self.handleRestartClick(processId);
+                }
+            });
+
+            $(document).on('click', '.cancel-btn', function() {
+                var processId = $(this).data('process');
+                if (processId) {
+                    self.debugLog('User clicked Cancel for process: ' + processId);
+                    self.handleCancelClick(processId);
+                }
+            });
+
             var $sqlModal = $('#wmf-sql-modal');
             if ($sqlModal.length) {
                 self.bindSqlPreflight($sqlModal);
@@ -148,10 +173,6 @@ jQuery(document).ready(function($) {
 
             var self = this;
             elements = elements || {};
-
-            // Also log to browser console
-            console.log('=== WPML FIXER REGISTER PROGRESS TYPE ===');
-            console.log('Type:', type);
 
             self.debugLog('=== REGISTER PROGRESS TYPE DEBUG ===');
             self.debugLog('Registering type: ' + type);
@@ -319,7 +340,8 @@ jQuery(document).ready(function($) {
                     // Check if process is less than 1 hour old and was running or interrupted
                     if (state.timestamp && (now - state.timestamp) < 3600000 && (state.running || state.interrupted)) {
                         hasInterrupted = true;
-                        self.showResumeDialog(processId, state);
+                        // Instead of showing dialog, restore the UI state
+                        self.restoreProcessUI(processId, state);
                     }
                 }
 
@@ -338,26 +360,164 @@ jQuery(document).ready(function($) {
         },
 
         /**
-         * Show dialog to resume interrupted process
+         * Restore process UI for interrupted process
          */
-        showResumeDialog: function(processId, savedState) {
+        restoreProcessUI: function(processId, savedState) {
             var self = this;
 
-            self.debugLog('Found saved state for process: ' + processId, 'info');
+            self.debugLog('Restoring UI for interrupted process: ' + processId, 'info');
             self.debugLog('Saved state details: ' + JSON.stringify(savedState), 'info');
 
-            var message = 'Found interrupted process: ' + processId + '\n';
-            message += 'Progress: ' + (savedState.offset || 0) + ' of ' + (savedState.total || 'unknown') + '\n';
-            message += 'Items fixed: ' + (savedState.fixed || 0) + '\n\n';
-            message += 'Would you like to resume from where it stopped?';
+            // Store the saved state for potential resume
+            self.interruptedStates = self.interruptedStates || {};
+            self.interruptedStates[processId] = savedState;
 
-            if (confirm(message)) {
-                self.debugLog('User chose to resume process: ' + processId, 'info');
-                self.resumeProcess(processId, savedState);
-            } else {
-                self.debugLog('User chose to cancel resume for: ' + processId, 'info');
-                self.clearProcessState(processId);
+            // Get or create the progress controller
+            var controller = self.getProgressController(processId);
+            if (!controller) {
+                controller = self.registerProgressType(processId);
             }
+
+            if (controller) {
+                // Show the progress wrapper
+                if (controller.wrapper && controller.wrapper.length) {
+                    controller.wrapper.show();
+                    controller.wrapper.addClass('interrupted-process');
+                }
+
+                // Calculate progress percentage
+                var progress = savedState.offset || 0;
+                var total = savedState.total || 0;
+                var percent = total > 0 ? Math.min(100, (progress / total) * 100) : 0;
+
+                // Update progress bar
+                if (controller.fill && controller.fill.length) {
+                    controller.fill.css('width', percent + '%');
+                }
+
+                // Update progress text
+                if (controller.text && controller.text.length) {
+                    var label = self.formatProgressLabel(percent, progress, total, savedState.fixed || 0);
+                    controller.text.text(label);
+                }
+
+                // Update counts
+                self.setProgressCounts(controller, progress, total, savedState.fixed || 0, {
+                    total: savedState.issuesTotal || 0,
+                    remaining: savedState.issuesRemaining || 0,
+                    fixed: savedState.issuesFixed || 0
+                });
+
+                // Show status message with Resume/Restart buttons
+                if (controller.status && controller.status.length) {
+                    var statusHtml = '<div class="status-message status-warning">';
+                    statusHtml += '<strong>Process Interrupted</strong><br>';
+                    statusHtml += 'Progress: ' + progress + ' of ' + total + ' items processed<br>';
+                    statusHtml += 'Fixed: ' + (savedState.fixed || 0) + ' items<br>';
+                    statusHtml += '<div class="resume-controls" style="margin-top: 10px;">';
+                    statusHtml += '<button class="button button-primary resume-btn" data-process="' + processId + '">Resume</button> ';
+                    statusHtml += '<button class="button button-secondary restart-btn" data-process="' + processId + '">Restart</button> ';
+                    statusHtml += '<button class="button button-link cancel-btn" data-process="' + processId + '">Cancel</button>';
+                    statusHtml += '</div></div>';
+                    controller.status.html(statusHtml);
+                }
+
+                // Update button state
+                if (controller.button && controller.button.length) {
+                    controller.button.prop('disabled', true).text('Interrupted - Choose action below');
+                }
+            }
+        },
+
+        /**
+         * Handle Resume button click
+         */
+        handleResumeClick: function(processId) {
+            var self = this;
+            var savedState = self.interruptedStates[processId];
+
+            if (savedState) {
+                // Clear the interrupted UI state
+                var controller = self.getProgressController(processId);
+                if (controller) {
+                    controller.wrapper.removeClass('interrupted-process');
+                    if (controller.status) {
+                        controller.status.html('');
+                    }
+                    if (controller.button) {
+                        controller.button.prop('disabled', true).text('Processing...');
+                    }
+                }
+
+                // Resume the process
+                self.resumeProcess(processId, savedState);
+            }
+        },
+
+        /**
+         * Handle Restart button click
+         */
+        handleRestartClick: function(processId) {
+            var self = this;
+
+            // Clear saved state
+            self.clearProcessState(processId);
+            delete self.interruptedStates[processId];
+
+            // Reset UI
+            var controller = self.getProgressController(processId);
+            if (controller) {
+                controller.wrapper.removeClass('interrupted-process').hide();
+                if (controller.fill) {
+                    controller.fill.css('width', '0%');
+                }
+                if (controller.text) {
+                    controller.text.text('0%');
+                }
+                if (controller.status) {
+                    controller.status.html('');
+                }
+
+                // Reset counts
+                self.setProgressCounts(controller, 0, 0, 0, {
+                    total: 0,
+                    remaining: 0,
+                    fixed: 0
+                });
+
+                // Re-enable the original button
+                if (controller.button) {
+                    var originalText = controller.button.data('original-text') || 'Process';
+                    controller.button.prop('disabled', false).removeClass('is-busy').text(originalText);
+                }
+            }
+
+            self.showTemporaryMessage('Process reset. Click the button to start fresh.', 'info');
+        },
+
+        /**
+         * Handle Cancel button click
+         */
+        handleCancelClick: function(processId) {
+            var self = this;
+
+            // Clear saved state
+            self.clearProcessState(processId);
+            delete self.interruptedStates[processId];
+
+            // Hide UI
+            var controller = self.getProgressController(processId);
+            if (controller) {
+                controller.wrapper.removeClass('interrupted-process').hide();
+
+                // Re-enable the original button
+                if (controller.button) {
+                    var originalText = controller.button.data('original-text') || 'Process';
+                    controller.button.prop('disabled', false).removeClass('is-busy').text(originalText);
+                }
+            }
+
+            self.debugLog('Cancelled interrupted process: ' + processId);
         },
 
         /**
@@ -365,11 +525,6 @@ jQuery(document).ready(function($) {
          */
         resumeProcess: function(processId, savedState) {
             var self = this;
-
-            // Also log to browser console for easier debugging
-            console.log('=== WPML FIXER RESUME PROCESS DEBUG ===');
-            console.log('Process ID:', processId);
-            console.log('Saved State:', savedState);
 
             self.debugLog('=== RESUME PROCESS DEBUG START ===');
             self.debugLog('Process ID: ' + processId);

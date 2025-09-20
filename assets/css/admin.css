@@ -502,6 +502,26 @@ body.wmf-modal-open {
     margin-bottom: 0;
 }
 
+/* Interrupted process styles */
+.progress-wrapper.interrupted-process {
+    border: 2px solid #ffb900;
+    background: #fffbf0;
+}
+
+.progress-wrapper.interrupted-process .progress-bar {
+    background: #f9f9f9;
+}
+
+.resume-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.resume-controls .button {
+    margin: 0;
+}
+
 .stats-table {
     width: 100%;
     border-collapse: separate;
