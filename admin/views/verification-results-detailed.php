@@ -56,6 +56,9 @@ function format_stat($with, $total, $show_missing = true) {
                 <td style="color: <?php echo $data['missing_language'] > 0 ? '#f44336' : '#4CAF50'; ?>;">
                     <?php echo number_format($data['missing_language']); ?>
                 </td>
+                <td style="color: <?php echo ($data['wrong_language'] ?? 0) > 0 ? '#ff9800' : '#4CAF50'; ?>;">
+                    <?php echo number_format($data['wrong_language'] ?? 0); ?>
+                </td>
                 <td><?php echo number_format($data['wpml_groups']); ?></td>
                 <td><?php echo number_format($data['pll_groups']); ?></td>
                 <td>
@@ -108,6 +111,9 @@ function format_stat($with, $total, $show_missing = true) {
                 <td style="color: <?php echo $data['missing_language'] > 0 ? '#f44336' : '#4CAF50'; ?>;">
                     <?php echo number_format($data['missing_language']); ?>
                 </td>
+                <td style="color: <?php echo ($data['wrong_language'] ?? 0) > 0 ? '#ff9800' : '#4CAF50'; ?>;">
+                    <?php echo number_format($data['wrong_language'] ?? 0); ?>
+                </td>
                 <td><?php echo number_format($data['wpml_groups']); ?></td>
                 <td><?php echo number_format($data['pll_groups']); ?></td>
                 <td>
@@ -135,6 +141,7 @@ function format_stat($with, $total, $show_missing = true) {
                 <th><?php _e('Total Terms', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('With Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Missing Language', 'wpml-to-polylang-migration-fixer'); ?></th>
+                <th><?php _e('Wrong Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Status', 'wpml-to-polylang-migration-fixer'); ?></th>
             </tr>
         </thead>
@@ -152,8 +159,11 @@ function format_stat($with, $total, $show_missing = true) {
                 <td style="color: <?php echo $data['missing_language'] > 0 ? '#f44336' : '#4CAF50'; ?>;">
                     <?php echo number_format($data['missing_language']); ?>
                 </td>
+                <td style="color: <?php echo ($data['wrong_language'] ?? 0) > 0 ? '#ff9800' : '#4CAF50'; ?>;">
+                    <?php echo number_format($data['wrong_language'] ?? 0); ?>
+                </td>
                 <td>
-                    <?php if ($data['missing_language'] > 0): ?>
+                    <?php if ($data['missing_language'] > 0 || ($data['wrong_language'] ?? 0) > 0): ?>
                         <span class="dashicons dashicons-warning" style="color: #f44336;"></span>
                     <?php else: ?>
                         <span class="dashicons dashicons-yes-alt" style="color: #4CAF50;"></span>
@@ -175,8 +185,11 @@ function format_stat($with, $total, $show_missing = true) {
                 <td style="color: <?php echo $data['missing_language'] > 0 ? '#f44336' : '#4CAF50'; ?>;">
                     <?php echo number_format($data['missing_language']); ?>
                 </td>
+                <td style="color: <?php echo ($data['wrong_language'] ?? 0) > 0 ? '#ff9800' : '#4CAF50'; ?>;">
+                    <?php echo number_format($data['wrong_language'] ?? 0); ?>
+                </td>
                 <td>
-                    <?php if ($data['missing_language'] > 0): ?>
+                    <?php if ($data['missing_language'] > 0 || ($data['wrong_language'] ?? 0) > 0): ?>
                         <span class="dashicons dashicons-warning" style="color: #f44336;"></span>
                     <?php else: ?>
                         <span class="dashicons dashicons-yes-alt" style="color: #4CAF50;"></span>
@@ -226,6 +239,9 @@ function format_stat($with, $total, $show_missing = true) {
                 <td style="color: <?php echo $data['missing_language'] > 0 ? '#f44336' : '#4CAF50'; ?>;">
                     <?php echo number_format($data['missing_language']); ?>
                 </td>
+                <td style="color: <?php echo ($data['wrong_language'] ?? 0) > 0 ? '#ff9800' : '#4CAF50'; ?>;">
+                    <?php echo number_format($data['wrong_language'] ?? 0); ?>
+                </td>
                 <td><?php echo number_format($data['wpml_groups']); ?></td>
                 <td><?php echo number_format($data['pll_groups']); ?></td>
                 <td>
@@ -264,6 +280,7 @@ function format_stat($with, $total, $show_missing = true) {
                 <th><?php _e('Total Terms', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('With Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Missing Language', 'wpml-to-polylang-migration-fixer'); ?></th>
+                <th><?php _e('Wrong Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Status', 'wpml-to-polylang-migration-fixer'); ?></th>
             </tr>
         </thead>
@@ -280,8 +297,11 @@ function format_stat($with, $total, $show_missing = true) {
                 <td style="color: <?php echo $data['missing_language'] > 0 ? '#f44336' : '#4CAF50'; ?>;">
                     <?php echo number_format($data['missing_language']); ?>
                 </td>
+                <td style="color: <?php echo ($data['wrong_language'] ?? 0) > 0 ? '#ff9800' : '#4CAF50'; ?>;">
+                    <?php echo number_format($data['wrong_language'] ?? 0); ?>
+                </td>
                 <td>
-                    <?php if ($data['missing_language'] > 0): ?>
+                    <?php if ($data['missing_language'] > 0 || ($data['wrong_language'] ?? 0) > 0): ?>
                         <span class="dashicons dashicons-warning" style="color: #f44336;"></span>
                     <?php else: ?>
                         <span class="dashicons dashicons-yes-alt" style="color: #4CAF50;"></span>
@@ -398,6 +418,18 @@ function format_stat($with, $total, $show_missing = true) {
     $total_issues = 0;
     $action_items = [];
 
+    // Check for posts with wrong language
+    foreach ($results['detailed_posts'] as $type_key => $data) {
+        if (($data['wrong_language'] ?? 0) > 0) {
+            $total_issues += $data['wrong_language'];
+            $action_items[] = sprintf(
+                __('Fix %d %s with wrong language', 'wpml-to-polylang-migration-fixer'),
+                $data['wrong_language'],
+                $data['label']
+            );
+        }
+    }
+
     // Check for posts without language
     foreach ($results['detailed_posts'] as $type_key => $data) {
         if ($data['missing_language'] > 0) {
@@ -405,6 +437,18 @@ function format_stat($with, $total, $show_missing = true) {
             $action_items[] = sprintf(
                 __('Fix %d %s without language', 'wpml-to-polylang-migration-fixer'),
                 $data['missing_language'],
+                $data['label']
+            );
+        }
+    }
+
+    // Check for terms with wrong language
+    foreach ($results['detailed_terms'] as $tax_key => $data) {
+        if (($data['wrong_language'] ?? 0) > 0) {
+            $total_issues += $data['wrong_language'];
+            $action_items[] = sprintf(
+                __('Fix %d %s terms with wrong language', 'wpml-to-polylang-migration-fixer'),
+                $data['wrong_language'],
                 $data['label']
             );
         }
