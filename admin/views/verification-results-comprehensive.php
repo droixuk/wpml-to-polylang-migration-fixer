@@ -153,6 +153,33 @@ if (!defined('ABSPATH')) exit;
             <?php endforeach; ?>
         </ul>
         <?php endif; ?>
+
+        <?php if (!empty($results['detailed_posts'])): ?>
+        <table class="verification-table">
+            <thead>
+                <tr>
+                    <th><?php _e('Post Type', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('Total', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('With Language', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('Missing', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('WPML Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('PLL Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($results['detailed_posts'] as $type_key => $data): ?>
+                <tr>
+                    <td><strong><?php echo esc_html($data['label']); ?></strong> <small style="color:#607d8b;">(<?php echo esc_html($type_key); ?>)</small></td>
+                    <td><?php echo number_format_i18n($data['total']); ?></td>
+                    <td><?php echo number_format_i18n($data['with_language']); ?></td>
+                    <td><?php echo number_format_i18n($data['missing_language']); ?></td>
+                    <td><?php echo number_format_i18n($data['wpml_groups']); ?></td>
+                    <td><?php echo number_format_i18n($data['pll_groups']); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
     </div>
     
     <!-- Terms Verification -->
@@ -176,7 +203,44 @@ if (!defined('ABSPATH')) exit;
             <?php endforeach; ?>
         </ul>
         <?php endif; ?>
+
+        <?php if (!empty($results['detailed_terms'])): ?>
+        <table class="verification-table">
+            <thead>
+                <tr>
+                    <th><?php _e('Taxonomy', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('Total', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('With Language', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('Missing', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('WPML Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('PLL Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($results['detailed_terms'] as $tax_key => $data): ?>
+                <tr>
+                    <td><strong><?php echo esc_html($data['label']); ?></strong> <small style="color:#607d8b;">(<?php echo esc_html($tax_key); ?>)</small></td>
+                    <td><?php echo number_format_i18n($data['total']); ?></td>
+                    <td><?php echo number_format_i18n($data['with_language']); ?></td>
+                    <td><?php echo number_format_i18n($data['missing_language']); ?></td>
+                    <td><?php echo number_format_i18n($data['wpml_groups']); ?></td>
+                    <td><?php echo number_format_i18n($data['pll_groups']); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
     </div>
++    <?php if (!empty($results['terms_per_language'])): ?>
+    <div class="verification-subsection">
+        <h6 style="margin: 15px 0 5px;">🌍 <?php _e('Terms per Language', 'wpml-to-polylang-migration-fixer'); ?></h6>
+        <ul class="verification-split-list">
+            <?php foreach ($results['terms_per_language'] as $slug => $count): ?>
+            <li><strong><?php echo esc_html($slug); ?>:</strong> <?php echo number_format_i18n($count); ?></li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+    <?php endif; ?>
     
     <!-- Translation Groups Verification -->
     <div class="verification-component">

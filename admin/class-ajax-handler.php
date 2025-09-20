@@ -1523,11 +1523,26 @@ class WPML_Fixer_Ajax_Handler {
             ob_start();
             
             $results = $this->migration_verifier->verify_migration();
-            
+            $breakdown = [];
+            if ($this->db_helper && method_exists($this->db_helper, 'get_comprehensive_verification')) {
+                $breakdown = $this->db_helper->get_comprehensive_verification();
+                if (!empty($breakdown)) {
+                    foreach (['detailed_posts','detailed_terms','terms_per_language','content_groups','string_translations'] as $key) {
+                        if (isset($breakdown[$key])) {
+                            $results[$key] = $breakdown[$key];
+                        }
+                    }
+
+                    if (isset($breakdown['betterdocs_issues'])) {
+                        $results['betterdocs']['issues_breakdown'] = $breakdown['betterdocs_issues'];
+                    }
+                }
+            }
+
             // Generate HTML output with error handling
             try {
                 // Extract variables for the view
-                extract(array('results' => $results));
+                extract(array('results' => $results, 'breakdown' => $breakdown));
                 
                 // Use the view file - try detailed first, fallback to comprehensive
                 $view_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/verification-results-detailed.php';
