@@ -2,6 +2,10 @@
 
 A comprehensive WordPress plugin that fixes language assignments and translation groups after migrating from WPML to Polylang. This tool ensures proper language configuration for posts, pages, custom post types, taxonomies, WooCommerce products, and BetterDocs content.
 
+## 🚨 Recent Major Update (December 2024)
+
+This plugin has been significantly enhanced to handle complex migration scenarios, particularly for sites using BetterDocs and WooCommerce. The update addresses critical issues where content loses language assignments or has corrupted language codes after WPML → Polylang migration.
+
 -----
 
 ## Directory Structure
@@ -267,7 +271,113 @@ The plugin follows WordPress coding standards and uses a modular architecture:
   - `{prefix}term_relationships`: Language assignments
   - `{prefix}term_taxonomy`: Translation groups
 
+## Recent Updates & Architecture Changes
+
+### December 2024 Enhancement
+
+#### Problem Addressed
+The plugin was enhanced to fix specific migration issues:
+- **BetterDocs FAQs** with `WPML='en'` but `PLL=NULL`
+- **BetterDocs categories** with WPML language but missing Polylang term_language
+- **Language variants** (en-ie, en-au) not mapped correctly
+- **Corrupted codes** with `pll_` prefixes
+
+#### New Architecture Components
+
+##### 1. Language Canonicalization System (`class-language-converter.php`)
+```php
+// New methods added:
+canonicaliz e_slug($code)        // Normalizes codes: en_US → en-us, removes pll_ prefix
+ensure_pll_language_exists($slug) // Validates language exists or maps to canonical
+```
+- Configurable variant mappings (en-au → en-gb)
+- Filter: `wpml_to_polylang_fixer_variant_map`
+- Filter: `wpml_to_polylang_fixer_default_language`
+
+##### 2. Enhanced Database Helper (`class-database-helper.php`)
+```php
+// Critical new methods:
+ensure_term_language_buckets()    // Pre-flight check for Polylang buckets
+fix_posts_batch($ids)              // Comprehensive post fixer with WPML fallback
+fix_terms_batch($terms)            // Term fixer using term_taxonomy_id
+fix_betterdocs_batch()             // BetterDocs-specific handler
+fix_woocommerce_attributes_batch() // WooCommerce pa_* attributes
+get_comprehensive_verification()    // Full diagnostic suite
+```
+
+##### 3. New AJAX Handlers (`class-ajax-handler.php`)
+- `wmf_ensure_buckets` - Creates missing term_language entries
+- `wmf_normalize_languages` - Batch language canonicalization
+- `wmf_fix_all_posts` - Enhanced post processing
+- `wmf_fix_all_terms` - Enhanced term processing
+- `wmf_fix_betterdocs` - BetterDocs-specific
+- `wmf_fix_woo_attributes` - Product attributes
+
+##### 4. UI Enhancements (`class-ui-renderer.php`)
+New buttons added:
+- "Ensure Language Buckets" - Pre-flight safeguard
+- "Normalize All Language Codes" - Fix variants/corruption
+- "Fix All Posts (Comprehensive)" - New enhanced fixer
+- "Fix All Terms (Comprehensive)" - New enhanced fixer
+- "Fix BetterDocs (Comprehensive)" - Dedicated handler
+- "Fix Product Attributes (pa_*)" - WooCommerce specific
+
+#### SQL Operations Flow
+
+1. **Pre-flight Checks**
+```sql
+-- Ensure term_language buckets exist
+INSERT IGNORE INTO {prefix}term_taxonomy (term_id, taxonomy)
+SELECT term_id, 'term_language' FROM ...
+```
+
+2. **Post Language Assignment**
+```sql
+-- Get WPML language
+SELECT language_code FROM {prefix}icl_translations
+WHERE element_id={post_id} AND element_type='post_{type}'
+-- Then use pll_set_post_language()
+```
+
+3. **Term Language Assignment**
+```sql
+-- Get WPML language by term_taxonomy_id
+SELECT language_code FROM {prefix}icl_translations
+WHERE element_id={term_taxonomy_id} AND element_type='tax_{taxonomy}'
+-- Then use pll_set_term_language()
+```
+
+#### Key Design Decisions
+
+1. **Idempotent Operations**: All fixes can be run multiple times safely
+2. **WPML Fallback**: When WPML data missing, uses Polylang default
+3. **Batch Processing**: 50 items default to prevent timeouts
+4. **Transaction Safety**: Database operations wrapped in transactions
+5. **Cache Clearing**: Automatic after each fix operation
+
+#### Recommended Workflow
+
+1. **Normalize Language Codes** - Fix corrupted/variant codes first
+2. **Ensure Language Buckets** - Create missing Polylang structures
+3. **Fix All Posts** - Assign languages from WPML data
+4. **Fix All Terms** - Fix taxonomies including pa_*
+5. **Fix BetterDocs** (if active) - Handle docs/FAQs specifically
+6. **Fix Translation Groups** - Rebuild relationships
+7. **Run Verification** - Confirm all fixed
+
 ## Changelog
+
+### Version 1.2.0 (December 2024)
+- Added comprehensive language canonicalization system
+- Implemented pre-flight term_language bucket checks
+- Enhanced batch processing with WPML data fallback
+- Added BetterDocs FAQ and category specific fixes
+- Added WooCommerce product attribute (pa_*) support
+- New comprehensive verification with SQL diagnostics
+- Improved UI with dedicated fix buttons per content type
+- Added configurable language variant mappings
+- Transaction safety for all database operations
+- Automatic cache clearing after fixes
 
 ### Version 1.1.0
 - Added comprehensive migration verifier
