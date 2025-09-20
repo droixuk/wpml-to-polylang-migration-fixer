@@ -102,7 +102,11 @@ class WPML_Fixer_Ajax_Handler {
         add_action('wp_ajax_wmf_fix_all_terms', [$this, 'handle_fix_all_terms']);
         add_action('wp_ajax_wmf_fix_betterdocs', [$this, 'handle_fix_betterdocs']);
         add_action('wp_ajax_wmf_fix_woo_attributes', [$this, 'handle_fix_woo_attributes']);
-        
+
+        // Progress saving/loading for resume capability
+        add_action('wp_ajax_wpml_fixer_save_progress', [$this, 'handle_save_progress']);
+        add_action('wp_ajax_wpml_fixer_get_progress', [$this, 'handle_get_progress']);
+
         // Log successful initialization
         if ($this->logger) {
             $this->logger->log('Enhanced AJAX handlers registered (process/test/status/sql).', 'info');
@@ -2592,6 +2596,80 @@ class WPML_Fixer_Ajax_Handler {
                 $this->logger->log_error('SQL execute failed', $e);
             }
             wp_send_json_error($e->getMessage());
+        }
+    }
+
+    /**
+     * Handle saving progress to database
+     */
+    public function handle_save_progress() {
+        $this->verify_request(false);
+
+        $process_id = sanitize_text_field($_POST['process_id'] ?? '');
+        $progress_data = $_POST['progress_data'] ?? [];
+
+        if (empty($process_id)) {
+            wp_send_json_error('Process ID required');
+            return;
+        }
+
+        // Store progress as WordPress option
+        $option_name = 'wpml_fixer_progress_' . $process_id;
+        $progress_data['last_updated'] = current_time('timestamp');
+
+        update_option($option_name, $progress_data, false);
+
+        // Clean up old progress data (older than 7 days)
+        $this->cleanup_old_progress();
+
+        wp_send_json_success('Progress saved');
+    }
+
+    /**
+     * Handle getting saved progress from database
+     */
+    public function handle_get_progress() {
+        $this->verify_request(false);
+
+        $process_id = sanitize_text_field($_POST['process_id'] ?? '');
+
+        if (empty($process_id)) {
+            wp_send_json_error('Process ID required');
+            return;
+        }
+
+        $option_name = 'wpml_fixer_progress_' . $process_id;
+        $progress_data = get_option($option_name, null);
+
+        if ($progress_data) {
+            wp_send_json_success($progress_data);
+        } else {
+            wp_send_json_error('No saved progress found');
+        }
+    }
+
+    /**
+     * Clean up old progress data
+     */
+    private function cleanup_old_progress() {
+        global $wpdb;
+
+        // Find all progress options
+        $options = $wpdb->get_col(
+            "SELECT option_name FROM {$wpdb->options}
+             WHERE option_name LIKE 'wpml_fixer_progress_%'"
+        );
+
+        $current_time = current_time('timestamp');
+        $week_ago = $current_time - (7 * 24 * 60 * 60);
+
+        foreach ($options as $option_name) {
+            $progress = get_option($option_name);
+            if ($progress && isset($progress['last_updated'])) {
+                if ($progress['last_updated'] < $week_ago) {
+                    delete_option($option_name);
+                }
+            }
         }
     }
 

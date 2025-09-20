@@ -17,7 +17,9 @@ jQuery(document).ready(function($) {
         page: '',
         processingStates: {}, // Track processing state for each type
         progressControllers: {}, // Cache DOM references for reusable progress UI
-        sqlModalInitialized: false
+        sqlModalInitialized: false,
+        stateStorageKey: 'wpml_fixer_process_state',
+        autoSaveInterval: null
     });
     
     // Try to load localization data from multiple sources
@@ -93,6 +95,9 @@ jQuery(document).ready(function($) {
                     $('.guide-toggle').attr('aria-expanded', 'true');
                     $('.guide-toggle .dashicons').removeClass('dashicons-arrow-down-alt2').addClass('dashicons-arrow-up-alt2');
                 }
+
+                // Check for interrupted processes
+                self.checkForInterruptedProcesses();
             }
 
             // Bind debug toggle
@@ -223,6 +228,137 @@ jQuery(document).ready(function($) {
             }
 
             return this.progressControllers[type];
+        },
+
+        /**
+         * Save process state to localStorage
+         */
+        saveProcessState: function(processId, state) {
+            if (typeof(Storage) === "undefined") return;
+
+            try {
+                var allStates = JSON.parse(localStorage.getItem(this.stateStorageKey) || '{}');
+                allStates[processId] = $.extend({}, state, {
+                    timestamp: new Date().getTime(),
+                    url: window.location.href
+                });
+                localStorage.setItem(this.stateStorageKey, JSON.stringify(allStates));
+                this.debugLog('State saved for process: ' + processId);
+            } catch (e) {
+                this.debugLog('Failed to save state: ' + e.message, 'error');
+            }
+        },
+
+        /**
+         * Load process state from localStorage
+         */
+        loadProcessState: function(processId) {
+            if (typeof(Storage) === "undefined") return null;
+
+            try {
+                var allStates = JSON.parse(localStorage.getItem(this.stateStorageKey) || '{}');
+                return allStates[processId] || null;
+            } catch (e) {
+                this.debugLog('Failed to load state: ' + e.message, 'error');
+                return null;
+            }
+        },
+
+        /**
+         * Clear saved state for a process
+         */
+        clearProcessState: function(processId) {
+            if (typeof(Storage) === "undefined") return;
+
+            try {
+                var allStates = JSON.parse(localStorage.getItem(this.stateStorageKey) || '{}');
+                delete allStates[processId];
+                localStorage.setItem(this.stateStorageKey, JSON.stringify(allStates));
+                this.debugLog('State cleared for process: ' + processId);
+            } catch (e) {
+                this.debugLog('Failed to clear state: ' + e.message, 'error');
+            }
+        },
+
+        /**
+         * Check for interrupted processes on page load
+         */
+        checkForInterruptedProcesses: function() {
+            var self = this;
+            if (typeof(Storage) === "undefined") return;
+
+            try {
+                var allStates = JSON.parse(localStorage.getItem(this.stateStorageKey) || '{}');
+                var now = new Date().getTime();
+                var hasInterrupted = false;
+
+                for (var processId in allStates) {
+                    var state = allStates[processId];
+                    // Check if process is less than 1 hour old and was running or interrupted
+                    if (state.timestamp && (now - state.timestamp) < 3600000 && (state.running || state.interrupted)) {
+                        hasInterrupted = true;
+                        self.showResumeDialog(processId, state);
+                    }
+                }
+
+                // Clean up old states (older than 24 hours)
+                for (var processId in allStates) {
+                    var state = allStates[processId];
+                    if (!state.timestamp || (now - state.timestamp) > 86400000) {
+                        delete allStates[processId];
+                    }
+                }
+                localStorage.setItem(this.stateStorageKey, JSON.stringify(allStates));
+
+            } catch (e) {
+                this.debugLog('Failed to check interrupted processes: ' + e.message, 'error');
+            }
+        },
+
+        /**
+         * Show dialog to resume interrupted process
+         */
+        showResumeDialog: function(processId, savedState) {
+            var self = this;
+
+            var message = 'Found interrupted process: ' + processId + '\n';
+            message += 'Progress: ' + (savedState.offset || 0) + ' of ' + (savedState.total || 'unknown') + '\n';
+            message += 'Items fixed: ' + (savedState.fixed || 0) + '\n\n';
+            message += 'Would you like to resume from where it stopped?';
+
+            if (confirm(message)) {
+                self.resumeProcess(processId, savedState);
+            } else {
+                self.clearProcessState(processId);
+            }
+        },
+
+        /**
+         * Resume a process from saved state
+         */
+        resumeProcess: function(processId, savedState) {
+            var self = this;
+
+            self.processingStates[processId] = savedState;
+            self.debugLog('Resuming process ' + processId + ' from offset ' + (savedState.offset || 0));
+
+            // Restore UI state
+            var controller = self.getProgressController(processId);
+            if (controller) {
+                self.updateProcessUI(processId, 'processing', {
+                    processed: savedState.offset || 0,
+                    total: savedState.total || 0,
+                    fixed: savedState.fixed || 0,
+                    message: 'Resuming process...'
+                });
+            }
+
+            // Continue processing
+            if (savedState.action) {
+                self.processBatch(processId, savedState.action, savedState.offset || 0, savedState.additionalData || {});
+            } else {
+                self.processBatch(processId, savedState.offset || 0, savedState.batchSize || 100);
+            }
         },
         
         /**
@@ -1308,6 +1444,20 @@ jQuery(document).ready(function($) {
                         self.debugLog('Batch completed for ' + processId + ': processed=' + result.processed + ', fixed=' + (result.fixed || 0) + ', continue=' + result.continue);
 
                         if (result.continue && result.next_offset !== undefined) {
+                            // Save state before continuing
+                            self.saveProcessState(processId, {
+                                running: true,
+                                offset: result.next_offset,
+                                total: state.total,
+                                fixed: state.fixed,
+                                action: isComprehensive ? action : null,
+                                batchSize: batchSize,
+                                additionalData: additionalData,
+                                issuesTotal: state.issuesTotal,
+                                issuesRemaining: state.issuesRemaining,
+                                issuesFixed: state.issuesFixed
+                            });
+
                             if (isComprehensive) {
                                 setTimeout(function() {
                                     self.processBatch(processId, action, result.next_offset, additionalData);
@@ -1318,6 +1468,8 @@ jQuery(document).ready(function($) {
                                 }, 100);
                             }
                         } else {
+                            // Clear saved state on completion
+                            self.clearProcessState(processId);
                             state.running = false;
                             self.updateProcessUI(processId, 'complete', {
                                 processed: result.processed,
@@ -1334,15 +1486,31 @@ jQuery(document).ready(function($) {
                         }
                     } else {
                         var errorMsg = response && response.data ? response.data : 'Unknown error';
-                            state.running = false;
-                            self.updateProcessUI(processId, 'error', { message: errorMsg });
+                        self.clearProcessState(processId);
+                        state.running = false;
+                        self.updateProcessUI(processId, 'error', { message: errorMsg });
                         self.debugLog('❌ Process ' + processId + ' failed: ' + errorMsg, 'error');
                     }
                 })
                 .fail(function(xhr, status, error) {
+                    // Don't clear state on network error - allow resume
+                    self.saveProcessState(processId, {
+                        running: false,
+                        interrupted: true,
+                        offset: offset,
+                        total: state.total,
+                        fixed: state.fixed,
+                        action: isComprehensive ? action : null,
+                        batchSize: batchSize,
+                        additionalData: additionalData,
+                        issuesTotal: state.issuesTotal,
+                        issuesRemaining: state.issuesRemaining,
+                        issuesFixed: state.issuesFixed,
+                        lastError: error
+                    });
                     state.running = false;
-                    self.updateProcessUI(processId, 'error', { message: error });
-                    self.debugLog('❌ Process ' + processId + ' failed: ' + error, 'error');
+                    self.updateProcessUI(processId, 'error', { message: error + ' (State saved - can resume)' });
+                    self.debugLog('❌ Process ' + processId + ' failed: ' + error + ' - State saved for resume', 'error');
                 });
         },
 
