@@ -78,19 +78,30 @@ jQuery(document).ready(function($) {
          */
         init: function() {
             var self = this;
-            
+
             // Check initial debug state
             self.debugEnabled = $('#debug-toggle').is(':checked');
             self.toggleDebugConsole();
             self.cacheProgressControllers();
-            
+
+            // Restore migration guide state
+            if (typeof(Storage) !== "undefined") {
+                var guideVisible = localStorage.getItem('wpml_fixer_guide_visible');
+                // Default to visible if not set
+                if (guideVisible === null || guideVisible === 'true') {
+                    $('#guide-content').show();
+                    $('.guide-toggle').attr('aria-expanded', 'true');
+                    $('.guide-toggle .dashicons').removeClass('dashicons-arrow-down-alt2').addClass('dashicons-arrow-up-alt2');
+                }
+            }
+
             // Bind debug toggle
             $('#debug-toggle').on('change', function() {
                 self.debugEnabled = $(this).is(':checked');
                 self.toggleDebugConsole();
                 self.debugLog('Debug mode ' + (self.debugEnabled ? 'enabled' : 'disabled'));
             });
-            
+
             var $sqlModal = $('#wmf-sql-modal');
             if ($sqlModal.length) {
                 self.bindSqlPreflight($sqlModal);
@@ -813,6 +824,37 @@ jQuery(document).ready(function($) {
         },
 
         /**
+         * Toggle migration guide visibility
+         */
+        toggleGuide: function() {
+            var $guide = $('#migration-guide');
+            var $content = $('#guide-content');
+            var $toggle = $guide.find('.guide-toggle');
+            var $icon = $toggle.find('.dashicons');
+            var isVisible = $content.is(':visible');
+
+            if (isVisible) {
+                // Hide the guide
+                $content.slideUp(300);
+                $toggle.attr('aria-expanded', 'false');
+                $icon.removeClass('dashicons-arrow-up-alt2').addClass('dashicons-arrow-down-alt2');
+                // Save state
+                if (typeof(Storage) !== "undefined") {
+                    localStorage.setItem('wpml_fixer_guide_visible', 'false');
+                }
+            } else {
+                // Show the guide
+                $content.slideDown(300);
+                $toggle.attr('aria-expanded', 'true');
+                $icon.removeClass('dashicons-arrow-down-alt2').addClass('dashicons-arrow-up-alt2');
+                // Save state
+                if (typeof(Storage) !== "undefined") {
+                    localStorage.setItem('wpml_fixer_guide_visible', 'true');
+                }
+            }
+        },
+
+        /**
          * Ensure term_language buckets exist
          */
         ensureBuckets: function() {
@@ -870,7 +912,7 @@ jQuery(document).ready(function($) {
          */
         fixBetterDocs: function() {
             var self = this;
-            self.startBatchProcess('fix-betterdocs', 'wmf_fix_betterdocs', { type: 'posts' });
+            self.startBatchProcess('fix-betterdocs', 'wmf_fix_betterdocs');
         },
 
         /**
@@ -887,14 +929,26 @@ jQuery(document).ready(function($) {
         startBatchProcess: function(processId, action, additionalData) {
             var self = this;
 
-            if (self.processingStates[processId]) {
+            if (self.processingStates[processId] && self.processingStates[processId].running) {
                 self.debugLog('Process ' + processId + ' already running', 'warning');
                 return;
             }
 
-            self.processingStates[processId] = true;
-            self.setupProgressUI(processId);
-            self.updateProgressUI(processId, 0, 'Starting...');
+            self.processingStates[processId] = {
+                running: true,
+                fixed: 0,
+                total: 0
+            };
+
+            var controller = self.getProgressController(processId);
+            if (!controller) {
+                controller = self.registerProgressType(processId);
+            }
+            if (!controller && self.debugEnabled) {
+                self.debugLog('Unable to initialise progress UI for "' + processId + '"', 'error');
+            }
+
+            self.updateProcessUI(processId, 'starting', { total: 0 });
 
             self.debugLog('Starting batch process: ' + processId);
 
@@ -906,9 +960,10 @@ jQuery(document).ready(function($) {
          */
         processBatch: function(processId, action, offset, additionalData) {
             var self = this;
+            var state = self.processingStates[processId];
 
-            if (!self.processingStates[processId]) {
-                self.debugLog('Process ' + processId + ' was stopped', 'warning');
+            if (!state || !state.running) {
+                self.debugLog('Process ' + processId + ' was stopped or not initialised', 'warning');
                 return;
             }
 
@@ -920,27 +975,69 @@ jQuery(document).ready(function($) {
             $.post(self.ajaxUrl, requestData)
                 .done(function(response) {
                     if (response && response.success) {
-                        var data = response.data;
-                        var progress = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 100;
+                        var data = response.data || {};
+                        var controller = self.getProgressController(processId);
+                        if (!controller) {
+                            controller = self.registerProgressType(processId);
+                        }
 
-                        self.updateProgressUI(processId, progress,
-                            'Processed: ' + data.processed + '/' + data.total + ' (Fixed: ' + data.fixed + ')');
+                        var total = data.total || (controller && controller.counts ? controller.counts.total : 0);
+                        var processed = data.processed || 0;
+                        var fixedBatch = data.fixed || 0;
+                        var aggregatedFixed;
 
-                        self.debugLog('Progress ' + processId + ': ' + progress + '% - Fixed: ' + data.fixed);
+                        if (typeof data.fixed_total === 'number') {
+                            aggregatedFixed = data.fixed_total;
+                        } else if (controller && controller.counts && typeof controller.counts.fixed === 'number') {
+                            aggregatedFixed = controller.counts.fixed + fixedBatch;
+                        } else {
+                            aggregatedFixed = fixedBatch;
+                        }
+
+                        var progressLabel = data.message || ('Processed ' + processed + ' / ' + (total || 0));
+
+                        self.updateProcessUI(processId, 'processing', {
+                            processed: processed,
+                            total: total,
+                            fixed: aggregatedFixed,
+                            message: progressLabel
+                        });
+
+                        state.fixed = aggregatedFixed;
+                        state.total = total;
+
+                        self.debugLog('Progress ' + processId + ': ' + processed + '/' + total + ' | fixed total ' + aggregatedFixed);
 
                         if (data.continue && data.next_offset !== undefined) {
                             setTimeout(function() {
                                 self.processBatch(processId, action, data.next_offset, additionalData);
                             }, 100);
                         } else {
-                            self.completeProcess(processId, data);
+                            state.running = false;
+                            self.updateProcessUI(processId, 'complete', {
+                                processed: processed,
+                                total: total,
+                                fixed: aggregatedFixed,
+                                message: data.message || 'Complete!'
+                            });
+                            delete self.processingStates[processId];
+                            self.debugLog('Process ' + processId + ' completed successfully');
+                            self.showTemporaryMessage('Process ' + processId + ' completed!', 'success');
                         }
                     } else {
-                        self.failProcess(processId, response && response.data ? response.data : 'Unknown error');
+                        var errorMsg = response && response.data ? response.data : 'Unknown error';
+                        state.running = false;
+                        delete self.processingStates[processId];
+                        self.updateProcessUI(processId, 'error', { message: errorMsg });
+                        self.debugLog('❌ Process ' + processId + ' failed: ' + errorMsg, 'error');
                     }
                 })
                 .fail(function(xhr, status, error) {
-                    self.failProcess(processId, error || status || 'Request failed');
+                    var message = error || status || 'Request failed';
+                    state.running = false;
+                    delete self.processingStates[processId];
+                    self.updateProcessUI(processId, 'error', { message: message });
+                    self.debugLog('❌ Process ' + processId + ' failed: ' + message, 'error');
                 });
         },
 
@@ -1186,7 +1283,16 @@ jQuery(document).ready(function($) {
                 case 'processing':
                     var total = data.total || 0;
                     var processed = data.processed || 0;
-                    var fixedCount = data.fixed || 0;
+                    var fixedTotal;
+                    if (typeof data.fixed_total === 'number') {
+                        fixedTotal = data.fixed_total;
+                    } else if (typeof data.fixed === 'number') {
+                        fixedTotal = data.fixed;
+                    } else if (controller.counts && typeof controller.counts.fixed === 'number') {
+                        fixedTotal = controller.counts.fixed;
+                    } else {
+                        fixedTotal = 0;
+                    }
                     var percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
                     if (progressFill && progressFill.length) {
                         progressFill.css('width', percentage + '%');
@@ -1194,9 +1300,9 @@ jQuery(document).ready(function($) {
 
                     // Clear progress text showing current numbers
                     if (progressText && progressText.length) {
-                        progressText.text(self.formatProgressLabel(percentage, processed, total, fixedCount));
+                        progressText.text(self.formatProgressLabel(percentage, processed, total, fixedTotal));
                     }
-                    self.setProgressCounts(controller, processed, total, fixedCount);
+                    self.setProgressCounts(controller, processed, total, fixedTotal);
 
                     // Enhanced status message with clear counts
                     var statusMessage = data.message || 'Processing...';
@@ -1226,7 +1332,15 @@ jQuery(document).ready(function($) {
                     }
                     var completeTotal = data.total || 0;
                     var completeProcessed = data.processed || completeTotal;
-                    var completeFixed = data.fixed || 0;
+                    var countsSnapshot = controller.counts || {};
+                    var completeFixed;
+                    if (typeof data.fixed === 'number') {
+                        completeFixed = data.fixed;
+                    } else if (typeof data.fixed_total === 'number') {
+                        completeFixed = data.fixed_total;
+                    } else {
+                        completeFixed = typeof countsSnapshot.fixed === 'number' ? countsSnapshot.fixed : 0;
+                    }
                     self.setProgressCounts(controller, completeProcessed, completeTotal || completeProcessed, completeFixed);
                     if (progressText && progressText.length) {
                         var completePercentage = completeTotal > 0 ? 100 : (completeProcessed > 0 ? 100 : 0);

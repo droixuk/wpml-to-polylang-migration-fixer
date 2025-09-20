@@ -26,10 +26,24 @@ class WPML_Fixer_UI_Renderer {
                 <p><?php _e('Professional migration verification and content language assignment fixes', 'wpml-migration-fixer'); ?></p>
             </div>
             
+            <!-- Migration Guide -->
+            <?php
+            $guide_file = WPML_TO_POLYLANG_FIXER_PLUGIN_DIR . 'admin/views/migration-guide.php';
+            if (file_exists($guide_file)) {
+                include $guide_file;
+            }
+            ?>
+
             <!-- System Status -->
             <div class="wpml-card" style="margin-bottom: 30px;">
                 <h2><span class="icon">⚙️</span> <?php _e('System Status', 'wpml-migration-fixer'); ?></h2>
                 
+                <?php
+                $woocommerce = isset($system_status['woocommerce']) ? $system_status['woocommerce'] : ['active' => false, 'version' => ''];
+                $betterdocs  = isset($system_status['betterdocs']) ? $system_status['betterdocs'] : ['active' => false, 'version' => ''];
+                $acf         = isset($system_status['acf']) ? $system_status['acf'] : ['active' => false, 'version' => ''];
+                $languages   = isset($system_status['languages']) ? (array) $system_status['languages'] : [];
+                ?>
                 <div class="quick-stats">
                     <div class="stat-box">
                         <div class="stat-label"><?php _e('WPML Data', 'wpml-migration-fixer'); ?></div>
@@ -44,14 +58,50 @@ class WPML_Fixer_UI_Renderer {
                         </div>
                     </div>
                     <div class="stat-box">
+                        <div class="stat-label"><?php _e('WooCommerce', 'wpml-migration-fixer'); ?></div>
+                        <div class="badge <?php echo $woocommerce['active'] ? 'badge-success' : 'badge-info'; ?>">
+                            <?php echo $woocommerce['active'] ? '✅ ' . __('Active', 'wpml-migration-fixer') : 'ℹ️ ' . __('Optional', 'wpml-migration-fixer'); ?>
+                        </div>
+                        <?php if (!empty($woocommerce['version']) && $woocommerce['active']) : ?>
+                            <div class="stat-meta"><?php printf(__('Version %s', 'wpml-migration-fixer'), esc_html($woocommerce['version'])); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label"><?php _e('BetterDocs', 'wpml-migration-fixer'); ?></div>
+                        <div class="badge <?php echo $betterdocs['active'] ? 'badge-success' : 'badge-info'; ?>">
+                            <?php echo $betterdocs['active'] ? '✅ ' . __('Detected', 'wpml-migration-fixer') : 'ℹ️ ' . __('Not Detected', 'wpml-migration-fixer'); ?>
+                        </div>
+                        <?php if (!empty($betterdocs['version']) && $betterdocs['active']) : ?>
+                            <div class="stat-meta"><?php printf(__('Version %s', 'wpml-migration-fixer'), esc_html($betterdocs['version'])); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label"><?php _e('ACF', 'wpml-migration-fixer'); ?></div>
+                        <div class="badge <?php echo $acf['active'] ? 'badge-success' : 'badge-info'; ?>">
+                            <?php echo $acf['active'] ? '✅ ' . __('Detected', 'wpml-migration-fixer') : 'ℹ️ ' . __('Not Detected', 'wpml-migration-fixer'); ?>
+                        </div>
+                        <?php if (!empty($acf['version']) && $acf['active']) : ?>
+                            <div class="stat-meta"><?php printf(__('Version %s', 'wpml-migration-fixer'), esc_html($acf['version'])); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="stat-box">
                         <div class="stat-label"><?php _e('Languages', 'wpml-migration-fixer'); ?></div>
                         <div style="font-size: 14px; margin-top: 5px;">
-                            <?php 
-                            if ($system_status['polylang_active']) {
-                                echo implode(', ', $system_status['languages']);
+                            <?php
+                            if ($system_status['polylang_active'] && !empty($languages)) {
+                                $safe_languages = array_map('esc_html', $languages);
+                                echo implode(', ', $safe_languages);
                             } else {
-                                echo 'N/A';
+                                echo esc_html__('N/A', 'wpml-migration-fixer');
                             }
+                            ?>
+                        </div>
+                        <div class="stat-meta">
+                            <?php
+                            $default_language = !empty($system_status['default_language'])
+                                ? esc_html($system_status['default_language'])
+                                : esc_html__('Not set', 'wpml-migration-fixer');
+                            printf(__('Default: %s', 'wpml-migration-fixer'), $default_language);
                             ?>
                         </div>
                     </div>
