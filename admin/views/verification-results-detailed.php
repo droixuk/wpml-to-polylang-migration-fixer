@@ -36,7 +36,8 @@ function format_stat($with, $total, $show_missing = true) {
                 <th><?php _e('Content Type', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Total', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('With Language', 'wpml-to-polylang-migration-fixer'); ?></th>
-                <th><?php _e('Missing Language', 'wpml-to-polylang-migration-fixer'); ?></th>
+                <th><?php _e('Missing', 'wpml-to-polylang-migration-fixer'); ?></th>
+                <th><?php _e('Wrong Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('WPML Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('PLL Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Status', 'wpml-to-polylang-migration-fixer'); ?></th>
@@ -87,7 +88,8 @@ function format_stat($with, $total, $show_missing = true) {
                 <th><?php _e('Content Type', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Total', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('With Language', 'wpml-to-polylang-migration-fixer'); ?></th>
-                <th><?php _e('Missing Language', 'wpml-to-polylang-migration-fixer'); ?></th>
+                <th><?php _e('Missing', 'wpml-to-polylang-migration-fixer'); ?></th>
+                <th><?php _e('Wrong Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('WPML Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('PLL Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Status', 'wpml-to-polylang-migration-fixer'); ?></th>
@@ -204,7 +206,8 @@ function format_stat($with, $total, $show_missing = true) {
                 <th><?php _e('Content Type', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Total', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('With Language', 'wpml-to-polylang-migration-fixer'); ?></th>
-                <th><?php _e('Missing Language', 'wpml-to-polylang-migration-fixer'); ?></th>
+                <th><?php _e('Missing', 'wpml-to-polylang-migration-fixer'); ?></th>
+                <th><?php _e('Wrong Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('WPML Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('PLL Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                 <th><?php _e('Status', 'wpml-to-polylang-migration-fixer'); ?></th>

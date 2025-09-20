@@ -340,6 +340,7 @@ class WPML_To_Polylang_Migration_Verifier {
             'pll_post_groups' => 0,
             'posts_with_language' => 0,
             'posts_without_language' => 0,
+            'posts_wrong_language' => 0,
             'orphaned_wpml_groups' => 0,
             'corrupted_groups' => 0
         ];
@@ -412,10 +413,33 @@ class WPML_To_Polylang_Migration_Verifier {
             ");
             
             $verification['posts_without_language'] = intval($total_posts) - $verification['posts_with_language'];
-            
+
             if ($verification['posts_without_language'] > 0) {
                 $verification['critical_issues'] += $verification['posts_without_language'];
                 $verification['issues'][] = "Found {$verification['posts_without_language']} posts without language assignment";
+            }
+
+            // Check for posts with WRONG language (mismatch between WPML and Polylang)
+            $posts_wrong_language = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT p.ID)
+                FROM {$this->wpdb->posts} p
+                JOIN {$this->wpdb->term_relationships} tr ON tr.object_id = p.ID
+                JOIN {$this->wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                JOIN {$this->wpdb->terms} t ON t.term_id = tt.term_id
+                LEFT JOIN {$this->icl_table} wpml ON wpml.element_id = p.ID
+                    AND wpml.element_type LIKE 'post_%'
+                WHERE p.post_type IN ('post', 'page', 'product', 'docs')
+                AND p.post_status IN ('publish', 'draft', 'private')
+                AND tt.taxonomy = 'language'
+                AND wpml.language_code IS NOT NULL
+                AND t.slug != wpml.language_code
+                AND t.slug != REPLACE(wpml.language_code, '_', '-')
+            ");
+            $verification['posts_wrong_language'] = intval($posts_wrong_language);
+
+            if ($verification['posts_wrong_language'] > 0) {
+                $verification['critical_issues'] += $verification['posts_wrong_language'];
+                $verification['issues'][] = "Found {$verification['posts_wrong_language']} posts with wrong language assignment (mismatch between WPML and Polylang)";
             }
             
             // Check for corrupted translation groups (invalid serialized data)
@@ -463,6 +487,7 @@ class WPML_To_Polylang_Migration_Verifier {
             'pll_term_groups' => 0,
             'terms_with_language' => 0,
             'terms_without_language' => 0,
+            'terms_wrong_language' => 0,
             'orphaned_wpml_term_groups' => 0,
             'corrupted_term_groups' => 0
         ];
@@ -535,12 +560,35 @@ class WPML_To_Polylang_Migration_Verifier {
             ");
             
             $verification['terms_without_language'] = intval($total_terms) - $verification['terms_with_language'];
-            
+
             if ($verification['terms_without_language'] > 0) {
                 $verification['critical_issues'] += $verification['terms_without_language'];
                 $verification['issues'][] = "Found {$verification['terms_without_language']} terms without language assignment";
             }
-            
+
+            // Check for terms with WRONG language (mismatch between WPML and Polylang)
+            $terms_wrong_language = $this->wpdb->get_var("
+                SELECT COUNT(DISTINCT t.term_id)
+                FROM {$this->wpdb->terms} t
+                JOIN {$this->wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                JOIN {$this->wpdb->term_relationships} tr ON t.term_id = tr.object_id
+                JOIN {$this->wpdb->term_taxonomy} tl ON tr.term_taxonomy_id = tl.term_taxonomy_id
+                JOIN {$this->wpdb->terms} lang ON lang.term_id = tl.term_id
+                LEFT JOIN {$this->icl_table} wpml ON wpml.element_id = tt.term_taxonomy_id
+                    AND wpml.element_type LIKE 'tax_%'
+                WHERE tt.taxonomy IN ('category', 'post_tag', 'product_cat', 'product_tag', 'doc_category')
+                AND tl.taxonomy = 'term_language'
+                AND wpml.language_code IS NOT NULL
+                AND lang.slug != wpml.language_code
+                AND lang.slug != REPLACE(wpml.language_code, '_', '-')
+            ");
+            $verification['terms_wrong_language'] = intval($terms_wrong_language);
+
+            if ($verification['terms_wrong_language'] > 0) {
+                $verification['critical_issues'] += $verification['terms_wrong_language'];
+                $verification['issues'][] = "Found {$verification['terms_wrong_language']} terms with wrong language assignment (mismatch between WPML and Polylang)";
+            }
+
             $verification['status'] = $verification['critical_issues'] === 0 ? 'success' : 'issues';
             
         } catch (Exception $e) {

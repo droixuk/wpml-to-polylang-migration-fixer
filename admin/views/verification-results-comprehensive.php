@@ -78,18 +78,30 @@ if (!defined('ABSPATH')) exit;
 <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
     <h5 style="margin: 0 0 10px 0;">🔧 Recommended Actions (Priority Order)</h5>
     <ul style="margin: 0; padding-left: 20px;">
+        <?php if (($results['posts']['posts_wrong_language'] ?? 0) > 0 || ($results['terms']['terms_wrong_language'] ?? 0) > 0): ?>
+        <li><strong>⚠️ Critical:</strong> Fix language mismatches:
+            <?php if (($results['posts']['posts_wrong_language'] ?? 0) > 0): ?>
+            <?php echo $results['posts']['posts_wrong_language']; ?> posts with wrong language
+            <?php endif; ?>
+            <?php if (($results['terms']['terms_wrong_language'] ?? 0) > 0): ?>
+            <?php echo ($results['posts']['posts_wrong_language'] ?? 0) > 0 ? ' and ' : ''; ?>
+            <?php echo $results['terms']['terms_wrong_language']; ?> terms with wrong language
+            <?php endif; ?>
+        </li>
+        <?php endif; ?>
+
         <?php if ($results['terms']['terms_without_language'] > 0): ?>
         <li><strong>🏷️ Priority 1:</strong> Fix <?php echo $results['terms']['terms_without_language']; ?> terms without language using "Fix All Taxonomies"</li>
         <?php endif; ?>
-        
+
         <?php if ($results['translation_groups']['invalid_groups'] > 0 || $results['posts']['orphaned_wpml_groups'] > 0 || $results['terms']['orphaned_wpml_term_groups'] > 0): ?>
         <li><strong>🔗 Priority 2:</strong> Fix translation groups (<?php echo $results['translation_groups']['invalid_groups']; ?> corrupted, <?php echo $results['posts']['orphaned_wpml_groups']; ?> missing post groups, <?php echo $results['terms']['orphaned_wpml_term_groups']; ?> missing term groups) using "Fix Translation Groups"</li>
         <?php endif; ?>
-        
+
         <?php if ($results['posts']['posts_without_language'] > 0): ?>
         <li><strong>📝 Priority 3:</strong> Fix <?php echo $results['posts']['posts_without_language']; ?> posts without language using "Fix Posts & Pages"</li>
         <?php endif; ?>
-        
+
         <?php if ($results['betterdocs']['betterdocs_active'] && $results['betterdocs']['critical_issues'] > 0): ?>
         <li><strong>📚 Priority 4:</strong> Fix <?php echo $results['betterdocs']['critical_issues']; ?> BetterDocs issues using "Fix BetterDocs"</li>
         <?php endif; ?>
@@ -143,6 +155,7 @@ if (!defined('ABSPATH')) exit;
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0;">
             <div><strong><?php _e('With Language:', 'wpml-to-polylang-migration-fixer'); ?></strong> <?php echo $results['posts']['posts_with_language']; ?></div>
             <div><strong><?php _e('Missing Language:', 'wpml-to-polylang-migration-fixer'); ?></strong> <?php echo $results['posts']['posts_without_language']; ?></div>
+            <div><strong><?php _e('Wrong Language:', 'wpml-to-polylang-migration-fixer'); ?></strong> <span class="<?php echo ($results['posts']['posts_wrong_language'] ?? 0) > 0 ? 'text-error' : ''; ?>"><?php echo $results['posts']['posts_wrong_language'] ?? 0; ?></span></div>
             <div><strong><?php _e('WPML Groups:', 'wpml-to-polylang-migration-fixer'); ?></strong> <?php echo $results['posts']['wpml_post_trids']; ?></div>
             <div><strong><?php _e('PLL Groups:', 'wpml-to-polylang-migration-fixer'); ?></strong> <?php echo $results['posts']['pll_post_groups']; ?></div>
         </div>
@@ -162,6 +175,7 @@ if (!defined('ABSPATH')) exit;
                     <th><?php _e('Total', 'wpml-to-polylang-migration-fixer'); ?></th>
                     <th><?php _e('With Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                     <th><?php _e('Missing', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('Wrong Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                     <th><?php _e('WPML Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                     <th><?php _e('PLL Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                 </tr>
@@ -173,6 +187,7 @@ if (!defined('ABSPATH')) exit;
                     <td><?php echo number_format_i18n($data['total']); ?></td>
                     <td><?php echo number_format_i18n($data['with_language']); ?></td>
                     <td><?php echo number_format_i18n($data['missing_language']); ?></td>
+                    <td class="<?php echo $data['wrong_language'] > 0 ? 'text-error' : ''; ?>"><?php echo number_format_i18n($data['wrong_language'] ?? 0); ?></td>
                     <td><?php echo number_format_i18n($data['wpml_groups']); ?></td>
                     <td><?php echo number_format_i18n($data['pll_groups']); ?></td>
                 </tr>
@@ -193,6 +208,7 @@ if (!defined('ABSPATH')) exit;
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0;">
             <div><strong><?php _e('With Language:', 'wpml-to-polylang-migration-fixer'); ?></strong> <?php echo $results['terms']['terms_with_language']; ?></div>
             <div><strong><?php _e('Missing Language:', 'wpml-to-polylang-migration-fixer'); ?></strong> <?php echo $results['terms']['terms_without_language']; ?></div>
+            <div><strong><?php _e('Wrong Language:', 'wpml-to-polylang-migration-fixer'); ?></strong> <span class="<?php echo ($results['terms']['terms_wrong_language'] ?? 0) > 0 ? 'text-error' : ''; ?>"><?php echo $results['terms']['terms_wrong_language'] ?? 0; ?></span></div>
             <div><strong><?php _e('WPML Groups:', 'wpml-to-polylang-migration-fixer'); ?></strong> <?php echo $results['terms']['wpml_term_trids']; ?></div>
             <div><strong><?php _e('PLL Groups:', 'wpml-to-polylang-migration-fixer'); ?></strong> <?php echo $results['terms']['pll_term_groups']; ?></div>
         </div>
@@ -212,6 +228,7 @@ if (!defined('ABSPATH')) exit;
                     <th><?php _e('Total', 'wpml-to-polylang-migration-fixer'); ?></th>
                     <th><?php _e('With Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                     <th><?php _e('Missing', 'wpml-to-polylang-migration-fixer'); ?></th>
+                    <th><?php _e('Wrong Language', 'wpml-to-polylang-migration-fixer'); ?></th>
                     <th><?php _e('WPML Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                     <th><?php _e('PLL Groups', 'wpml-to-polylang-migration-fixer'); ?></th>
                 </tr>
@@ -223,6 +240,7 @@ if (!defined('ABSPATH')) exit;
                     <td><?php echo number_format_i18n($data['total']); ?></td>
                     <td><?php echo number_format_i18n($data['with_language']); ?></td>
                     <td><?php echo number_format_i18n($data['missing_language']); ?></td>
+                    <td class="<?php echo $data['wrong_language'] > 0 ? 'text-error' : ''; ?>"><?php echo number_format_i18n($data['wrong_language'] ?? 0); ?></td>
                     <td><?php echo number_format_i18n($data['wpml_groups']); ?></td>
                     <td><?php echo number_format_i18n($data['pll_groups']); ?></td>
                 </tr>

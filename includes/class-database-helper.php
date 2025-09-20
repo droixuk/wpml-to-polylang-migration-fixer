@@ -1098,7 +1098,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                 $results['terms_per_language'][$tpl->slug] = (int)$tpl->terms;
             }
 
-            // ENHANCED: Detailed post type breakdowns
+            // ENHANCED: Detailed post type breakdowns with mismatch detection
             $post_types = get_post_types(['public' => true], 'objects');
             foreach ($post_types as $post_type) {
                 $type_key = $post_type->name;
@@ -1118,6 +1118,26 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                     AND p.post_status IN ('publish','draft','private')
                     AND tt.taxonomy = 'language'
                 ", $type_key));
+
+                // Posts with WRONG language (mismatch between WPML and Polylang)
+                $wrong_lang = 0;
+                if ($this->wpml_tables_exist()) {
+                    $wrong_lang = $wpdb->get_var($wpdb->prepare("
+                        SELECT COUNT(DISTINCT p.ID)
+                        FROM {$wpdb->posts} p
+                        JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+                        JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                        JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+                        LEFT JOIN {$this->icl_table} wpml ON wpml.element_id = p.ID
+                            AND wpml.element_type = %s
+                        WHERE p.post_type = %s
+                        AND p.post_status IN ('publish','draft','private')
+                        AND tt.taxonomy = 'language'
+                        AND wpml.language_code IS NOT NULL
+                        AND t.slug != wpml.language_code
+                        AND t.slug != REPLACE(wpml.language_code, '_', '-')
+                    ", 'post_' . $type_key, $type_key));
+                }
 
                 // WPML translation groups
                 $wpml_groups = 0;
@@ -1147,6 +1167,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                     'total' => (int)$total,
                     'with_language' => (int)$with_lang,
                     'missing_language' => (int)($total - $with_lang),
+                    'wrong_language' => (int)$wrong_lang,
                     'wpml_groups' => (int)$wpml_groups,
                     'pll_groups' => (int)$pll_groups
                 ];
@@ -1189,6 +1210,25 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                     WHERE tt.taxonomy = %s AND tl.taxonomy = 'term_language'
                 ", $tax_key));
 
+                // Terms with WRONG language (mismatch between WPML and Polylang)
+                $wrong_lang = 0;
+                if ($this->wpml_tables_exist()) {
+                    $wrong_lang = $wpdb->get_var($wpdb->prepare("
+                        SELECT COUNT(DISTINCT tt.term_id)
+                        FROM {$wpdb->term_taxonomy} tt
+                        JOIN {$wpdb->term_relationships} tr ON tr.object_id = tt.term_id
+                        JOIN {$wpdb->term_taxonomy} tl ON tl.term_taxonomy_id = tr.term_taxonomy_id
+                        JOIN {$wpdb->terms} lang ON lang.term_id = tl.term_id
+                        LEFT JOIN {$this->icl_table} wpml ON wpml.element_id = tt.term_taxonomy_id
+                            AND wpml.element_type = %s
+                        WHERE tt.taxonomy = %s
+                        AND tl.taxonomy = 'term_language'
+                        AND wpml.language_code IS NOT NULL
+                        AND lang.slug != wpml.language_code
+                        AND lang.slug != REPLACE(wpml.language_code, '_', '-')
+                    ", 'tax_' . $tax_key, $tax_key));
+                }
+
                 // WPML translation groups
                 $wpml_groups = 0;
                 if ($this->wpml_tables_exist()) {
@@ -1217,6 +1257,7 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                     'total' => (int)$total,
                     'with_language' => (int)$with_lang,
                     'missing_language' => (int)($total - $with_lang),
+                    'wrong_language' => (int)$wrong_lang,
                     'wpml_groups' => (int)$wpml_groups,
                     'pll_groups' => (int)$pll_groups
                 ];
@@ -1303,7 +1344,25 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                 $results['translation_groups']['terms']['pll_total']
             );
 
+            // Aggregate wrong language counts from detailed breakdowns
+            $total_posts_wrong = 0;
+            $total_terms_wrong = 0;
+
+            foreach ($results['detailed_posts'] as $post_type) {
+                $total_posts_wrong += ($post_type['wrong_language'] ?? 0);
+            }
+
+            foreach ($results['detailed_terms'] as $taxonomy) {
+                $total_terms_wrong += ($taxonomy['wrong_language'] ?? 0);
+            }
+
             // Generate recommendations
+            if ($total_posts_wrong > 0) {
+                $results['recommendations'][] = "Fix {$total_posts_wrong} posts with wrong language (mismatch between WPML and Polylang)";
+            }
+            if ($total_terms_wrong > 0) {
+                $results['recommendations'][] = "Fix {$total_terms_wrong} terms with wrong language (mismatch between WPML and Polylang)";
+            }
             if ($results['posts_without_pll'] > 0) {
                 $results['recommendations'][] = "Fix {$results['posts_without_pll']} posts without language assignments";
             }
