@@ -980,6 +980,10 @@ class WPML_To_Polylang_Fixer_Database_Helper {
     public function get_comprehensive_verification() {
         global $wpdb;
 
+        if (!isset($this->lang_converter)) {
+            $this->lang_converter = new WPML_To_Polylang_Fixer_Language_Converter();
+        }
+
         $results = [
             'languages_configured' => [],
             'term_language_buckets' => 0,
@@ -1122,21 +1126,8 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                 // Posts with WRONG language (mismatch between WPML and Polylang)
                 $wrong_lang = 0;
                 if ($this->wpml_tables_exist()) {
-                    $with_wpml_lang = $wpdb->get_var($wpdb->prepare("
-                        SELECT COUNT(DISTINCT p.ID)
-                        FROM {$wpdb->posts} p
-                        JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
-                        JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
-                        JOIN {$this->icl_table} wpml ON wpml.element_id = p.ID
-                            AND wpml.element_type = %s
-                        WHERE p.post_type = %s
-                        AND p.post_status IN ('publish','draft','private')
-                        AND tt.taxonomy = 'language'
-                        AND wpml.language_code IS NOT NULL
-                    ", 'post_' . $type_key, $type_key));
-
-                    $correct_lang = $wpdb->get_var($wpdb->prepare("
-                        SELECT COUNT(DISTINCT p.ID)
+                    $mismatch_rows = $wpdb->get_results($wpdb->prepare("
+                        SELECT DISTINCT p.ID, t.slug AS pll_slug, wpml.language_code AS wpml_lang
                         FROM {$wpdb->posts} p
                         JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
                         JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
@@ -1147,14 +1138,16 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                         AND p.post_status IN ('publish','draft','private')
                         AND tt.taxonomy = 'language'
                         AND wpml.language_code IS NOT NULL
-                        AND (
-                            t.slug = wpml.language_code
-                            OR t.slug = REPLACE(wpml.language_code, '_', '-')
-                            OR wpml.language_code = REPLACE(t.slug, '-', '_')
-                        )
                     ", 'post_' . $type_key, $type_key));
 
-                    $wrong_lang = max(0, (int)$with_wpml_lang - (int)$correct_lang);
+                    foreach ($mismatch_rows as $row) {
+                        $pll_slug = $this->lang_converter->canonicalize_slug($row->pll_slug);
+                        $wpml_slug = $this->lang_converter->canonicalize_slug($row->wpml_lang);
+
+                        if ($pll_slug && $wpml_slug && $pll_slug !== $wpml_slug) {
+                            $wrong_lang++;
+                        }
+                    }
                 }
 
                 // WPML translation groups
@@ -1231,20 +1224,8 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                 // Terms with WRONG language (mismatch between WPML and Polylang)
                 $wrong_lang = 0;
                 if ($this->wpml_tables_exist()) {
-                    $with_wpml_lang = $wpdb->get_var($wpdb->prepare("
-                        SELECT COUNT(DISTINCT tt.term_id)
-                        FROM {$wpdb->term_taxonomy} tt
-                        JOIN {$wpdb->term_relationships} tr ON tr.object_id = tt.term_id
-                        JOIN {$wpdb->term_taxonomy} tl ON tl.term_taxonomy_id = tr.term_taxonomy_id
-                        JOIN {$this->icl_table} wpml ON wpml.element_id = tt.term_taxonomy_id
-                            AND wpml.element_type = %s
-                        WHERE tt.taxonomy = %s
-                        AND tl.taxonomy = 'term_language'
-                        AND wpml.language_code IS NOT NULL
-                    ", 'tax_' . $tax_key, $tax_key));
-
-                    $correct_lang = $wpdb->get_var($wpdb->prepare("
-                        SELECT COUNT(DISTINCT tt.term_id)
+                    $mismatch_rows = $wpdb->get_results($wpdb->prepare("
+                        SELECT DISTINCT tt.term_id, lang.slug AS pll_slug, wpml.language_code AS wpml_lang
                         FROM {$wpdb->term_taxonomy} tt
                         JOIN {$wpdb->term_relationships} tr ON tr.object_id = tt.term_id
                         JOIN {$wpdb->term_taxonomy} tl ON tl.term_taxonomy_id = tr.term_taxonomy_id
@@ -1254,14 +1235,16 @@ class WPML_To_Polylang_Fixer_Database_Helper {
                         WHERE tt.taxonomy = %s
                         AND tl.taxonomy = 'term_language'
                         AND wpml.language_code IS NOT NULL
-                        AND (
-                            lang.slug = wpml.language_code
-                            OR lang.slug = REPLACE(wpml.language_code, '_', '-')
-                            OR wpml.language_code = REPLACE(lang.slug, '-', '_')
-                        )
                     ", 'tax_' . $tax_key, $tax_key));
 
-                    $wrong_lang = max(0, (int)$with_wpml_lang - (int)$correct_lang);
+                    foreach ($mismatch_rows as $row) {
+                        $pll_slug = $this->lang_converter->canonicalize_slug($row->pll_slug);
+                        $wpml_slug = $this->lang_converter->canonicalize_slug($row->wpml_lang);
+
+                        if ($pll_slug && $wpml_slug && $pll_slug !== $wpml_slug) {
+                            $wrong_lang++;
+                        }
+                    }
                 }
 
                 // WPML translation groups

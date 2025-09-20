@@ -19,7 +19,8 @@ class WPML_To_Polylang_Migration_Verifier {
     private $wpdb;
     private $logger;
     private $icl_table;
-    
+    private $lang_converter;
+
     public function __construct() {
         global $wpdb;
         $this->wpdb = $wpdb;
@@ -27,6 +28,10 @@ class WPML_To_Polylang_Migration_Verifier {
         
         if (class_exists('WPML_To_Polylang_Fixer_Debug_Logger')) {
             $this->logger = new WPML_To_Polylang_Fixer_Debug_Logger();
+        }
+
+        if (class_exists('WPML_To_Polylang_Fixer_Language_Converter')) {
+            $this->lang_converter = new WPML_To_Polylang_Fixer_Language_Converter();
         }
     }
     
@@ -462,7 +467,32 @@ class WPML_To_Polylang_Migration_Verifier {
                 )
             ");
 
-            $posts_wrong_language = max(0, intval($posts_with_wpml_language) - intval($posts_correct_language));
+            $posts_wrong_language = 0;
+            if ($this->lang_converter) {
+                $mismatch_rows = $this->wpdb->get_results("
+                    SELECT DISTINCT p.ID, lang.slug AS pll_slug, wpml.language_code AS wpml_lang
+                    FROM {$this->wpdb->posts} p
+                    JOIN {$this->wpdb->term_relationships} tr ON tr.object_id = p.ID
+                    JOIN {$this->wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                    JOIN {$this->wpdb->terms} lang ON lang.term_id = tt.term_id
+                    JOIN {$this->icl_table} wpml ON wpml.element_id = p.ID
+                        AND wpml.element_type IN ($post_element_types_sql)
+                    WHERE p.post_type IN ($post_types_sql)
+                    AND p.post_status IN ('publish', 'draft', 'private')
+                    AND tt.taxonomy = 'language'
+                    AND wpml.language_code IS NOT NULL
+                ");
+
+                foreach ($mismatch_rows as $row) {
+                    $pll_slug = $this->lang_converter->canonicalize_slug($row->pll_slug);
+                    $wpml_slug = $this->lang_converter->canonicalize_slug($row->wpml_lang);
+
+                    if ($pll_slug && $wpml_slug && $pll_slug !== $wpml_slug) {
+                        $posts_wrong_language++;
+                    }
+                }
+            }
+
             $verification['posts_wrong_language'] = $posts_wrong_language;
 
             if ($verification['posts_wrong_language'] > 0) {
@@ -638,7 +668,31 @@ class WPML_To_Polylang_Migration_Verifier {
                 )
             ");
 
-            $terms_wrong_language = max(0, intval($terms_with_wpml_language) - intval($terms_correct_language));
+            $terms_wrong_language = 0;
+            if ($this->lang_converter) {
+                $mismatch_rows = $this->wpdb->get_results("
+                    SELECT DISTINCT tt.term_id, lang.slug AS pll_slug, wpml.language_code AS wpml_lang
+                    FROM {$this->wpdb->term_taxonomy} tt
+                    JOIN {$this->wpdb->term_relationships} tr ON tr.object_id = tt.term_id
+                    JOIN {$this->wpdb->term_taxonomy} tl ON tl.term_taxonomy_id = tr.term_taxonomy_id
+                    JOIN {$this->wpdb->terms} lang ON lang.term_id = tl.term_id
+                    JOIN {$this->icl_table} wpml ON wpml.element_id = tt.term_taxonomy_id
+                        AND wpml.element_type IN ($term_element_types_sql)
+                    WHERE tt.taxonomy IN ($taxonomies_sql)
+                    AND tl.taxonomy = 'term_language'
+                    AND wpml.language_code IS NOT NULL
+                ");
+
+                foreach ($mismatch_rows as $row) {
+                    $pll_slug = $this->lang_converter->canonicalize_slug($row->pll_slug);
+                    $wpml_slug = $this->lang_converter->canonicalize_slug($row->wpml_lang);
+
+                    if ($pll_slug && $wpml_slug && $pll_slug !== $wpml_slug) {
+                        $terms_wrong_language++;
+                    }
+                }
+            }
+
             $verification['terms_wrong_language'] = $terms_wrong_language;
 
             if ($verification['terms_wrong_language'] > 0) {
