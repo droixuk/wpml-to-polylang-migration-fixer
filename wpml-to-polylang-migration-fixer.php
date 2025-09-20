@@ -214,7 +214,7 @@ class WPML_To_Polylang_Migration_Fixer {
         
         // Set default options
         add_option('wpml_to_polylang_fixer_debug_enabled', false);
-        add_option('wpml_to_polylang_fixer_batch_size', 20);
+        add_option('wpml_to_polylang_fixer_batch_size', 100);
         add_option('wpml_to_polylang_fixer_version', WPML_TO_POLYLANG_FIXER_VERSION);
         
         // Log activation

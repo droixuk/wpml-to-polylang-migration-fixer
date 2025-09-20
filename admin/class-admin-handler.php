@@ -169,7 +169,7 @@ class WPML_Fixer_Admin_Handler {
     private function get_settings() {
         return [
             'debug_enabled' => get_option('wpml_fixer_debug_enabled', false),
-            'batch_size' => get_option('wpml_fixer_batch_size', 20),
+            'batch_size' => get_option('wpml_fixer_batch_size', 100),
             'exclude_post_types' => get_option('wpml_fixer_exclude_post_types', [])
         ];
     }

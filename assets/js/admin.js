@@ -1364,7 +1364,7 @@ jQuery(document).ready(function($) {
             self.updateProcessUI(type, 'starting');
             
             // Start the batch processing
-            self.processBatch(type, 0, 20); // Start with offset 0, batch size 20
+            self.processBatch(type, 0, 100); // Start with offset 0, batch size 100
         },
         
         /**
