@@ -680,6 +680,8 @@ jQuery(document).ready(function($) {
 
             var issuesTotal = controller.counts.issues_total || 0;
             var issuesRemaining = controller.counts.issues_remaining || 0;
+            var issuesFixed = 0;
+
             if (issues && typeof issues === 'object') {
                 if (typeof issues.total === 'number') {
                     issuesTotal = issues.total;
@@ -687,11 +689,20 @@ jQuery(document).ready(function($) {
                 if (typeof issues.remaining === 'number') {
                     issuesRemaining = issues.remaining;
                 }
+                if (typeof issues.fixed === 'number') {
+                    issuesFixed = issues.fixed;
+                }
             }
 
             issuesTotal = typeof issuesTotal === 'number' ? issuesTotal : parseInt(issuesTotal || 0, 10) || 0;
             issuesRemaining = typeof issuesRemaining === 'number' ? issuesRemaining : parseInt(issuesRemaining || 0, 10) || 0;
-            var issuesFixed = Math.max(issuesTotal - issuesRemaining, 0);
+
+            // If issuesFixed wasn't provided, calculate it
+            if (!issuesFixed && issuesTotal > 0) {
+                issuesFixed = Math.max(issuesTotal - issuesRemaining, 0);
+            } else {
+                issuesFixed = typeof issuesFixed === 'number' ? issuesFixed : parseInt(issuesFixed || 0, 10) || 0;
+            }
 
             controller.counts = {
                 processed: processed,
@@ -1035,7 +1046,8 @@ jQuery(document).ready(function($) {
                 fixed: 0,
                 total: 0,
                 issuesTotal: null,
-                issuesRemaining: null
+                issuesRemaining: null,
+                issuesFixed: 0
             };
 
             self.runPreflight(processId, action, additionalData || {})
@@ -1070,7 +1082,8 @@ jQuery(document).ready(function($) {
                         fixed: 0,
                         total: previewTotal || issuesTotal,
                         issuesTotal: issuesTotal,
-                        issuesRemaining: issuesRemaining !== null ? issuesRemaining : issuesTotal
+                        issuesRemaining: issuesRemaining !== null ? issuesRemaining : issuesTotal,
+                        issuesFixed: 0
                     };
 
                     self.updateProcessUI(processId, 'starting', {
@@ -1277,6 +1290,9 @@ jQuery(document).ready(function($) {
                         if (result.issues_remaining !== undefined) {
                             state.issuesRemaining = result.issues_remaining;
                         }
+                        if (result.issues_fixed !== undefined) {
+                            state.issuesFixed = result.issues_fixed;
+                        }
 
                         self.updateProcessUI(processId, 'processing', {
                             processed: result.processed,
@@ -1285,6 +1301,7 @@ jQuery(document).ready(function($) {
                             message: result.message,
                             issues_total: state.issuesTotal,
                             issues_remaining: state.issuesRemaining,
+                            issues_fixed: state.issuesFixed,
                             debug: result.debug  // DEBUG CODE: Pass debug data
                         });
 
@@ -1308,7 +1325,8 @@ jQuery(document).ready(function($) {
                                 fixed: state.fixed,
                                 message: result.message || 'Complete!',
                                 issues_total: state.issuesTotal,
-                                issues_remaining: state.issuesRemaining
+                                issues_remaining: state.issuesRemaining,
+                                issues_fixed: state.issuesFixed
                             });
 
                             self.debugLog('Process ' + processId + ' completed successfully');
@@ -1429,7 +1447,8 @@ jQuery(document).ready(function($) {
                     }
                     self.setProgressCounts(controller, processed, total, fixedTotal, {
                         total: data.issues_total !== undefined ? data.issues_total : controller.counts.issues_total,
-                        remaining: data.issues_remaining !== undefined ? data.issues_remaining : controller.counts.issues_remaining
+                        remaining: data.issues_remaining !== undefined ? data.issues_remaining : controller.counts.issues_remaining,
+                        fixed: data.issues_fixed !== undefined ? data.issues_fixed : undefined
                     });
 
                     // DEBUG CODE START
@@ -1486,7 +1505,8 @@ jQuery(document).ready(function($) {
                     }
                     self.setProgressCounts(controller, completeProcessed, completeTotal || completeProcessed, completeFixed, {
                         total: data.issues_total !== undefined ? data.issues_total : controller.counts.issues_total,
-                        remaining: data.issues_remaining !== undefined ? data.issues_remaining : controller.counts.issues_remaining
+                        remaining: data.issues_remaining !== undefined ? data.issues_remaining : controller.counts.issues_remaining,
+                        fixed: data.issues_fixed !== undefined ? data.issues_fixed : undefined
                     });
                     if (progressText && progressText.length) {
                         var completePercentage = completeTotal > 0 ? 100 : (completeProcessed > 0 ? 100 : 0);
